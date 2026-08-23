@@ -1,0 +1,10 @@
+[package]
+name = "rf-106-output"
+description = "RF-106 global voice sum, switched HPF and output VCA"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+libm = "0.2"

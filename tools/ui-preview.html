@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RF-106 Web UI preview</title>
+    <style>
+      html, body, iframe { width: 100%; min-height: 100%; margin: 0; border: 0; }
+      body { background: #0b0c0f; }
+      iframe { display: block; height: 100vh; }
+    </style>
+  </head>
+  <body>
+    <iframe src="../plugin/package/web/play.html?v=responsive-28" title="RF-106 preview"></iframe>
+    <script type="module">
+      const protocol = "rackforge.plugin.web@1";
+      const frame = document.querySelector("iframe");
+      const [schema, catalog] = await Promise.all([
+        fetch("../plugin/package/metadata/parameters.json").then((response) => response.json()),
+        fetch("../plugin/package/metadata/presets.json").then((response) => response.json()),
+      ]);
+      let selectedSoundId = catalog.presets[0].id;
+      const dropFirstParameters = new URLSearchParams(location.search)
+        .has("drop-first-parameters");
+      let droppedParameters = false;
+      const values = new Map(schema.parameters.map((parameter) => [
+        parameter.index,
+        typeof parameter.kind.default === "boolean"
+          ? Number(parameter.kind.default)
+          : (parameter.kind.default ?? 0),
+      ]));
+
+      const send = (message) => frame.contentWindow.postMessage(message, location.origin);
+      const sendContext = () => send({
+        protocol,
+        kind: "context",
+        surface: "play",
+        instance: {
+          selected_sound_id: selectedSoundId,
+          sounds: catalog.presets,
+        },
+        program_draft: null,
+        audition: null,
+        host: { active_mode: "play", master_level: 1, master_pan: 0 },
+      });
+      const respond = (requestId, result) => send({
+        protocol,
+        kind: "response",
+        request_id: requestId,
+        ok: true,
+        result,
+      });
+
+      window.addEventListener("message", (event) => {
+        if (event.source !== frame.contentWindow || event.origin !== location.origin) return;
+        const message = event.data;
+        if (!message || message.protocol !== protocol) return;
+        if (message.kind === "ready") {
+          sendContext();
+        } else if (message.kind === "request" && message.method === "plugin.parameters") {
+          if (dropFirstParameters && !droppedParameters) {
+            droppedParameters = true;
+            return;
+          }
+          respond(message.request_id, {
+            instance_id: "preview.rf-106",
+            schema,
+            values: [...values].map(([index, value]) => ({ index, value })),
+          });
+        } else if (message.kind === "request" && message.method === "plugin.select_sound") {
+          selectedSoundId = message.params.sound_id;
+          respond(message.request_id, { sound_id: selectedSoundId });
+          sendContext();
+        } else if (message.kind === "request" && message.method === "plugin.set_parameter") {
+          values.set(message.params.parameter_index, message.params.value);
+          respond(message.request_id, { value: message.params.value });
+        }
+      });
+    </script>
+  </body>
+</html>

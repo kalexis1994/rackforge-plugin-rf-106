@@ -1,0 +1,32 @@
+[package]
+name = "rf-106-web"
+description = "Rust WebAssembly control surface for the RF-106 RackForge plugin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+js-sys = "0.3"
+serde.workspace = true
+serde_json.workspace = true
+serde-wasm-bindgen = "0.6"
+rf-106-contract.workspace = true
+wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = [
+    "CssStyleDeclaration",
+    "Document",
+    "DomRect",
+    "Element",
+    "Event",
+    "EventTarget",
+    "HtmlElement",
+    "Location",
+    "MessageEvent",
+    "Node",
+    "PointerEvent",
+    "Window",
+] }

@@ -1,0 +1,235 @@
+{
+  "schema_version": 2,
+  "pages": [
+    { "id": "level", "name": "Level", "order": 0, "header": "RF-106" },
+    { "id": "lfo", "name": "LFO", "order": 1, "header": "RF-106" },
+    { "id": "dco", "name": "DCO", "order": 2, "header": "RF-106" },
+    { "id": "hpf", "name": "HPF", "order": 3, "header": "RF-106" },
+    { "id": "filter", "name": "VCF", "order": 4, "header": "RF-106" },
+    { "id": "vca", "name": "VCA", "order": 5, "header": "RF-106" },
+    { "id": "envelope", "name": "ENV", "order": 6, "header": "RF-106" },
+    { "id": "chorus", "name": "Chorus", "order": 7, "header": "RF-106" },
+    { "id": "performance", "name": "Performance", "order": 8, "header": "RF-106" }
+  ],
+  "parameters": [
+    {
+      "index": 0, "id": "master-volume", "name": "Host Output", "page": "level", "order": 1,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 1.0, "step": 0.01, "unit": "x" },
+      "flags": { "automatable": true, "modulatable": false, "read_only": false, "advanced": true }, "suggested_control": "knob"
+    },
+    {
+      "index": 1, "id": "vcf-cutoff", "name": "Frequency", "page": "filter", "order": 0,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 1.0, "step": 0.007874015748031496 },
+      "flags": { "automatable": true, "modulatable": true, "read_only": false, "advanced": false }, "suggested_control": "automatic"
+    },
+    {
+      "index": 2, "id": "vcf-resonance", "name": "Resonance", "page": "filter", "order": 1,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.0, "step": 0.007874015748031496 },
+      "flags": { "automatable": true, "modulatable": true, "read_only": false, "advanced": false }, "suggested_control": "automatic"
+    },
+    {
+      "index": 3, "id": "env-attack", "name": "Attack", "page": "envelope", "order": 0,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.25, "step": 0.007874015748031496 },
+      "flags": { "automatable": true, "modulatable": true, "read_only": false, "advanced": false }, "suggested_control": "automatic"
+    },
+    {
+      "index": 4, "id": "env-decay", "name": "Decay", "page": "envelope", "order": 1,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.25, "step": 0.007874015748031496 },
+      "flags": { "automatable": true, "modulatable": true, "read_only": false, "advanced": false }, "suggested_control": "automatic"
+    },
+    {
+      "index": 5, "id": "env-sustain", "name": "Sustain", "page": "envelope", "order": 2,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.9, "step": 0.007874015748031496 },
+      "flags": { "automatable": true, "modulatable": true, "read_only": false, "advanced": false }, "suggested_control": "automatic"
+    },
+    {
+      "index": 6, "id": "env-release", "name": "Release", "page": "envelope", "order": 3,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.25, "step": 0.007874015748031496 },
+      "flags": { "automatable": true, "modulatable": true, "read_only": false, "advanced": false }, "suggested_control": "automatic"
+    },
+    {
+      "index": 7, "id": "bender-dco-sensitivity", "name": "Bender DCO", "page": "performance", "order": 1,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 1.0, "step": 0.007874015748031496 },
+      "flags": { "automatable": true, "modulatable": false, "read_only": false, "advanced": false }, "suggested_control": "automatic"
+    },
+    {
+      "index": 8, "id": "bender-vcf-sensitivity", "name": "Bender VCF", "page": "performance", "order": 2,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.0, "step": 0.007874015748031496 },
+      "flags": { "automatable": true, "modulatable": false, "read_only": false, "advanced": false }, "suggested_control": "automatic"
+    },
+    {
+      "index": 9, "id": "lfo-trigger-sensitivity", "name": "Bender LFO", "page": "performance", "order": 3,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.5, "step": 0.007874015748031496 },
+      "flags": { "automatable": true, "modulatable": false, "read_only": false, "advanced": false }, "suggested_control": "automatic"
+    },
+    {
+      "index": 10, "id": "tuning", "name": "Tune", "page": "performance", "order": 0,
+      "kind": { "type": "float", "minimum": -1.0, "maximum": 1.0, "default": 0.0, "step": 0.01, "unit": "st" },
+      "flags": { "automatable": true, "modulatable": false, "read_only": false, "advanced": false }, "suggested_control": "knob"
+    },
+    {
+      "index": 11, "id": "portamento", "name": "Portamento", "page": "performance", "order": 4,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.0, "step": 0.007874015748031496 },
+      "flags": { "automatable": true, "modulatable": false, "read_only": false, "advanced": false }, "suggested_control": "knob"
+    },
+    {
+      "index": 12, "id": "allocation-mode", "name": "Assign Mode", "page": "performance", "order": 6,
+      "kind": { "type": "enum", "default": 1, "choices": [ { "value": 0, "name": "Unison" }, { "value": 1, "name": "Poly 1" }, { "value": 2, "name": "Poly 2" } ] },
+      "flags": { "automatable": true, "modulatable": false, "read_only": false, "advanced": false }, "suggested_control": "list"
+    },
+    {
+      "index": 13, "id": "lfo-trigger", "name": "LFO Trigger", "page": "performance", "order": 7,
+      "kind": { "type": "trigger" },
+      "flags": { "automatable": false, "modulatable": false, "read_only": false, "advanced": false }, "suggested_control": "button"
+    },
+    {
+      "index": 14, "id": "lfo-rate", "name": "Rate", "page": "lfo", "order": 0,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.24, "step": 0.007874015748031496 },
+      "flags": { "automatable": true, "modulatable": true, "read_only": false, "advanced": false }, "suggested_control": "automatic"
+    },
+    {
+      "index": 15, "id": "lfo-delay", "name": "Delay Time", "page": "lfo", "order": 1,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.0, "step": 0.007874015748031496 },
+      "flags": { "automatable": true, "modulatable": true, "read_only": false, "advanced": false }, "suggested_control": "automatic"
+    },
+    {
+      "index": 16, "id": "dco-range", "name": "Range", "page": "dco", "order": 0,
+      "kind": { "type": "enum", "default": 1, "choices": [ { "value": 0, "name": "16'" }, { "value": 1, "name": "8'" }, { "value": 2, "name": "4'" } ] },
+      "flags": { "automatable": true, "modulatable": false, "read_only": false, "advanced": false }, "suggested_control": "list"
+    },
+    {
+      "index": 17, "id": "dco-lfo", "name": "LFO", "page": "dco", "order": 1,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.0, "step": 0.007874015748031496 },
+      "flags": { "automatable": true, "modulatable": true, "read_only": false, "advanced": false }, "suggested_control": "automatic"
+    },
+    {
+      "index": 18, "id": "dco-pwm", "name": "PWM", "page": "dco", "order": 2,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.0, "step": 0.007874015748031496 },
+      "flags": { "automatable": true, "modulatable": true, "read_only": false, "advanced": false }, "suggested_control": "automatic"
+    },
+    {
+      "index": 19, "id": "pwm-mode", "name": "PWM Mode", "page": "dco", "order": 3,
+      "kind": { "type": "enum", "default": 0, "choices": [ { "value": 0, "name": "LFO" }, { "value": 1, "name": "Manual" } ] },
+      "flags": { "automatable": true, "modulatable": false, "read_only": false, "advanced": false }, "suggested_control": "list"
+    },
+    {
+      "index": 20, "id": "dco-pulse", "name": "Pulse", "page": "dco", "order": 4,
+      "kind": { "type": "boolean", "default": true },
+      "flags": { "automatable": true, "modulatable": false, "read_only": false, "advanced": false }, "suggested_control": "button"
+    },
+    {
+      "index": 21, "id": "dco-saw", "name": "Saw", "page": "dco", "order": 5,
+      "kind": { "type": "boolean", "default": true },
+      "flags": { "automatable": true, "modulatable": false, "read_only": false, "advanced": false }, "suggested_control": "button"
+    },
+    {
+      "index": 22, "id": "dco-sub", "name": "Sub", "page": "dco", "order": 6,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.0, "step": 0.007874015748031496 },
+      "flags": { "automatable": true, "modulatable": true, "read_only": false, "advanced": false }, "suggested_control": "automatic"
+    },
+    {
+      "index": 23, "id": "dco-noise", "name": "Noise", "page": "dco", "order": 7,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.0, "step": 0.007874015748031496 },
+      "flags": { "automatable": true, "modulatable": true, "read_only": false, "advanced": false }, "suggested_control": "automatic"
+    },
+    {
+      "index": 24, "id": "hpf-frequency", "name": "Frequency", "page": "hpf", "order": 0,
+      "kind": { "type": "enum", "default": 1, "choices": [ { "value": 0, "name": "0 Bass Boost" }, { "value": 1, "name": "1 Flat" }, { "value": 2, "name": "2" }, { "value": 3, "name": "3" } ] },
+      "flags": { "automatable": true, "modulatable": false, "read_only": false, "advanced": false }, "suggested_control": "list"
+    },
+    {
+      "index": 25, "id": "vcf-envelope", "name": "Envelope", "page": "filter", "order": 2,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.0, "step": 0.007874015748031496 },
+      "flags": { "automatable": true, "modulatable": true, "read_only": false, "advanced": false }, "suggested_control": "automatic"
+    },
+    {
+      "index": 26, "id": "vcf-envelope-polarity", "name": "Envelope Polarity", "page": "filter", "order": 3,
+      "kind": { "type": "enum", "default": 0, "choices": [ { "value": 0, "name": "+" }, { "value": 1, "name": "-" } ] },
+      "flags": { "automatable": true, "modulatable": false, "read_only": false, "advanced": false }, "suggested_control": "list"
+    },
+    {
+      "index": 27, "id": "vcf-lfo", "name": "LFO", "page": "filter", "order": 4,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.0, "step": 0.007874015748031496 },
+      "flags": { "automatable": true, "modulatable": true, "read_only": false, "advanced": false }, "suggested_control": "automatic"
+    },
+    {
+      "index": 28, "id": "vcf-keyboard", "name": "Keyboard", "page": "filter", "order": 5,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.0, "step": 0.007874015748031496 },
+      "flags": { "automatable": true, "modulatable": true, "read_only": false, "advanced": false }, "suggested_control": "automatic"
+    },
+    {
+      "index": 29, "id": "vca-mode", "name": "Mode", "page": "vca", "order": 0,
+      "kind": { "type": "enum", "default": 0, "choices": [ { "value": 0, "name": "Envelope" }, { "value": 1, "name": "Gate" } ] },
+      "flags": { "automatable": true, "modulatable": false, "read_only": false, "advanced": false }, "suggested_control": "list"
+    },
+    {
+      "index": 30, "id": "vca-level", "name": "Level", "page": "vca", "order": 1,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 0.5, "step": 0.007874015748031496, "unit": "-5..+5" },
+      "flags": { "automatable": true, "modulatable": true, "read_only": false, "advanced": false }, "suggested_control": "automatic"
+    },
+    {
+      "index": 31, "id": "chorus-mode", "name": "Mode", "page": "chorus", "order": 0,
+      "kind": { "type": "enum", "default": 0, "choices": [ { "value": 0, "name": "Off" }, { "value": 1, "name": "I" }, { "value": 2, "name": "II" } ] },
+      "flags": { "automatable": true, "modulatable": false, "read_only": false, "advanced": false }, "suggested_control": "list"
+    },
+    {
+      "index": 32, "id": "power", "name": "Power", "page": "level", "order": 2,
+      "kind": { "type": "boolean", "default": true },
+      "flags": { "automatable": true, "modulatable": false, "read_only": false, "advanced": false }, "suggested_control": "button"
+    },
+    {
+      "index": 33, "id": "midi-channel", "name": "MIDI Channel", "page": "performance", "order": 8,
+      "kind": { "type": "enum", "default": 1, "choices": [
+        { "value": 1, "name": "1" }, { "value": 2, "name": "2" }, { "value": 3, "name": "3" }, { "value": 4, "name": "4" },
+        { "value": 5, "name": "5" }, { "value": 6, "name": "6" }, { "value": 7, "name": "7" }, { "value": 8, "name": "8" },
+        { "value": 9, "name": "9" }, { "value": 10, "name": "10" }, { "value": 11, "name": "11" }, { "value": 12, "name": "12" },
+        { "value": 13, "name": "13" }, { "value": 14, "name": "14" }, { "value": 15, "name": "15" }, { "value": 16, "name": "16" }
+      ] },
+      "flags": { "automatable": false, "modulatable": false, "read_only": false, "advanced": false }, "suggested_control": "list"
+    },
+    {
+      "index": 34, "id": "midi-function", "name": "MIDI Function", "page": "performance", "order": 9,
+      "kind": { "type": "enum", "default": 3, "choices": [ { "value": 1, "name": "I" }, { "value": 2, "name": "II" }, { "value": 3, "name": "III" } ] },
+      "flags": { "automatable": false, "modulatable": false, "read_only": false, "advanced": false }, "suggested_control": "list"
+    },
+    {
+      "index": 35, "id": "portamento-switch", "name": "Portamento On", "page": "performance", "order": 5,
+      "kind": { "type": "boolean", "default": true },
+      "flags": { "automatable": true, "modulatable": false, "read_only": false, "advanced": false }, "suggested_control": "button"
+    },
+    {
+      "index": 36, "id": "physical-volume", "name": "Volume", "page": "level", "order": 0,
+      "kind": { "type": "float", "minimum": 0.0, "maximum": 1.0, "default": 1.0, "step": 0.01 },
+      "flags": { "automatable": true, "modulatable": false, "read_only": false, "advanced": false }, "suggested_control": "knob"
+    },
+    {
+      "index": 37, "id": "key-transpose", "name": "Key Transpose", "page": "performance", "order": 5,
+      "kind": { "type": "trigger" },
+      "flags": { "automatable": false, "modulatable": false, "read_only": false, "advanced": false }, "suggested_control": "button"
+    },
+    {
+      "index": 38, "id": "bender-position", "name": "Bender", "page": "performance", "order": 10,
+      "kind": { "type": "float", "minimum": -1.0, "maximum": 1.0, "default": 0.0, "step": 0.007874015748031496 },
+      "flags": { "automatable": false, "modulatable": false, "read_only": false, "advanced": false }, "suggested_control": "automatic"
+    }
+  ],
+  "semantic_controls": [
+    { "role": "synth.oscillator.pulse_width", "parameter_index": 18 },
+    { "role": "synth.oscillator.sub.level", "parameter_index": 22 },
+    { "role": "synth.oscillator.noise.level", "parameter_index": 23 },
+    { "role": "synth.filter.cutoff", "parameter_index": 1 },
+    { "role": "synth.filter.resonance", "parameter_index": 2 },
+    { "role": "synth.filter.envelope.amount", "parameter_index": 25 },
+    { "role": "synth.filter.lfo.amount", "parameter_index": 27 },
+    { "role": "synth.filter.key_tracking", "parameter_index": 28 },
+    { "role": "synth.envelope.amp.attack", "parameter_index": 3 },
+    { "role": "synth.envelope.amp.decay", "parameter_index": 4 },
+    { "role": "synth.envelope.amp.sustain", "parameter_index": 5 },
+    { "role": "synth.envelope.amp.release", "parameter_index": 6 },
+    { "role": "synth.lfo.rate", "parameter_index": 14 },
+    { "role": "synth.lfo.depth", "parameter_index": 17 },
+    { "role": "synth.lfo.delay", "parameter_index": 15 },
+    { "role": "synth.amplifier.level", "parameter_index": 30 },
+    { "role": "plugin.output.level", "parameter_index": 36 }
+  ]
+}

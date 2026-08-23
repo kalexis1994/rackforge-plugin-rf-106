@@ -1,0 +1,17 @@
+[package]
+name = "rackforge-rf-106"
+description = "Portable RF-106 polyphonic synthesizer for RackForge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+libm = "0.2"
+rackforge-plugin-sdk.workspace = true
+rf-106-control.workspace = true
+rf-106-contract.workspace = true
+rf-106-dsp.workspace = true

@@ -1,0 +1,10 @@
+[package]
+name = "rf-106-contract"
+description = "Platform-neutral RF-106 parameters, factory presets, and state contract"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+path = "src/lib.rs"

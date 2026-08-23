@@ -1,0 +1,12 @@
+/target/
+/.cargo/config.toml
+/artifacts/
+/*.rfplugin
+*.wav
+*.mid
+/cfg/
+/nvram/
+/snap/
+/plugin/package/web/app.js
+/plugin/package/web/app_bg.wasm
+/tmp/

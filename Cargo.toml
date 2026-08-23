@@ -1,0 +1,38 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/rf-106-control",
+    "crates/rf-106-chorus",
+    "crates/rf-106-voice",
+    "crates/rf-106-output",
+    "crates/rf-106-contract",
+    "crates/rf-106-dsp",
+    "plugin",
+    "plugin-ui",
+    "tools/rf-106-circuit-lab",
+    "tools/rf-106-metadata",
+]
+
+[workspace.package]
+version = "0.2.6"
+edition = "2024"
+license = "GPL-3.0-only"
+repository = "https://github.com/kalexis1994/rackforge-plugin-rf-106"
+
+[workspace.dependencies]
+anyhow = "1.0"
+hound = "3.5"
+rf-106-control = { path = "crates/rf-106-control" }
+rf-106-chorus = { path = "crates/rf-106-chorus" }
+rf-106-output = { path = "crates/rf-106-output" }
+rf-106-voice = { path = "crates/rf-106-voice" }
+rf-106-contract = { path = "crates/rf-106-contract" }
+rf-106-dsp = { path = "crates/rf-106-dsp" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+thiserror = "2.0"
+
+# RackForge SDK revision implementing portable wasm-v1. Contributors can use
+# the adjacent checkout through `.cargo/config.toml.example`.
+rackforge-plugin-sdk = { git = "https://github.com/kalexis1994/rackforge.git", rev = "8f970390379b5c503e035badcd2f1d6c176a27bf" }

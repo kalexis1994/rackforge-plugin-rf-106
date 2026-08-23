@@ -1,0 +1,12 @@
+[package]
+name = "rf-106-circuit-lab"
+description = "Offline circuit-evidence laboratory for RF-106"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

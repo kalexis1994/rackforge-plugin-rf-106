@@ -1,0 +1,14 @@
+[package]
+name = "rf-106-chorus"
+description = "Calibratable RF-106 dual-MN3009 stereo chorus"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+libm = "0.2"
+rf-106-output.workspace = true
+
+[dev-dependencies]
+hound.workspace = true

@@ -1,0 +1,10 @@
+[package]
+name = "rf-106-voice"
+description = "RF-106 oscillator, filter, amplifier and envelope voice model"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+libm = "0.2"

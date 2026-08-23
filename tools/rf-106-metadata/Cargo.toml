@@ -1,0 +1,11 @@
+[package]
+name = "rf-106-metadata"
+description = "Generates deterministic RF-106 portable package metadata"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+rf-106-contract.workspace = true
+serde_json.workspace = true

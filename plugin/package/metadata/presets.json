@@ -1,0 +1,1292 @@
+{
+  "banks": [
+    {
+      "id": "factory.rf106",
+      "name": "RF-106",
+      "order": 0
+    }
+  ],
+  "presets": [
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.000",
+      "name": "A11 Brass",
+      "order": 0,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.001",
+      "name": "A12 Brass Swell",
+      "order": 1,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.002",
+      "name": "A13 Trumpet",
+      "order": 2,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.003",
+      "name": "A14 Flutes",
+      "order": 3,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.004",
+      "name": "A15 Moving Strings",
+      "order": 4,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.005",
+      "name": "A16 Brass & Strings",
+      "order": 5,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.006",
+      "name": "A17 Choir",
+      "order": 6,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.007",
+      "name": "A18 Piano I",
+      "order": 7,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.008",
+      "name": "A21 Organ I",
+      "order": 8,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.009",
+      "name": "A22 Organ II",
+      "order": 9,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.010",
+      "name": "A23 Combo Organ",
+      "order": 10,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.011",
+      "name": "A24 Calliope",
+      "order": 11,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.012",
+      "name": "A25 Donald Pluck",
+      "order": 12,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.013",
+      "name": "A26 Celeste",
+      "order": 13,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.014",
+      "name": "A27 E Piano I",
+      "order": 14,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.015",
+      "name": "A28 E Piano II",
+      "order": 15,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.016",
+      "name": "A31 Clock Chimes",
+      "order": 16,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.017",
+      "name": "A32 Steel Drums",
+      "order": 17,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.018",
+      "name": "A33 Xylophone",
+      "order": 18,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.019",
+      "name": "A34 Brass III",
+      "order": 19,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.020",
+      "name": "A35 Fanfare",
+      "order": 20,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.021",
+      "name": "A36 Strings III",
+      "order": 21,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.022",
+      "name": "A37 Pizzicato",
+      "order": 22,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.023",
+      "name": "A38 High Strings",
+      "order": 23,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.024",
+      "name": "A41 Bass Clarinet",
+      "order": 24,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.025",
+      "name": "A42 English Horn",
+      "order": 25,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.026",
+      "name": "A43 Brass Ensemble",
+      "order": 26,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.027",
+      "name": "A44 Guitar",
+      "order": 27,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.028",
+      "name": "A45 Koto",
+      "order": 28,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.029",
+      "name": "A46 Dark Pluck",
+      "order": 29,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.030",
+      "name": "A47 Funky I",
+      "order": 30,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.031",
+      "name": "A48 Synth Bass I",
+      "order": 31,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.032",
+      "name": "A51 Lead I",
+      "order": 32,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.033",
+      "name": "A52 Lead II",
+      "order": 33,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.034",
+      "name": "A53 Lead III",
+      "order": 34,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.035",
+      "name": "A54 Funky II",
+      "order": 35,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.036",
+      "name": "A55 Synth Bass II",
+      "order": 36,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.037",
+      "name": "A56 Funky III",
+      "order": 37,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.038",
+      "name": "A57 Thud Wah",
+      "order": 38,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.039",
+      "name": "A58 Going Up",
+      "order": 39,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.040",
+      "name": "A61 Piano II",
+      "order": 40,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.041",
+      "name": "A62 Clav.",
+      "order": 41,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.042",
+      "name": "A63 Frontier Organ",
+      "order": 42,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.043",
+      "name": "A64 Snare Drum",
+      "order": 43,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.044",
+      "name": "A65 Tom Toms",
+      "order": 44,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.045",
+      "name": "A66 Timpani",
+      "order": 45,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.046",
+      "name": "A67 Shaker",
+      "order": 46,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.047",
+      "name": "A68 Synth Pad",
+      "order": 47,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.048",
+      "name": "A71 Sweep I",
+      "order": 48,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.049",
+      "name": "A72 Pluck Sweep",
+      "order": 49,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.050",
+      "name": "A73 Repeater",
+      "order": 50,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.051",
+      "name": "A74 Sweep II",
+      "order": 51,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.052",
+      "name": "A75 Pluck Bell",
+      "order": 52,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.053",
+      "name": "A76 Dark Synth Piano",
+      "order": 53,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.054",
+      "name": "A77 Sustainer",
+      "order": 54,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.055",
+      "name": "A78 Wah Release",
+      "order": 55,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.056",
+      "name": "A81 Gong",
+      "order": 56,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.057",
+      "name": "A82 Resonance Funk",
+      "order": 57,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.058",
+      "name": "A83 Drum Booms",
+      "order": 58,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.059",
+      "name": "A84 Dust Storm",
+      "order": 59,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.060",
+      "name": "A85 Rocket Men",
+      "order": 60,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.061",
+      "name": "A86 Hand Claps",
+      "order": 61,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.062",
+      "name": "A87 FX Sweep",
+      "order": 62,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.063",
+      "name": "A88 Caverns",
+      "order": 63,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.064",
+      "name": "B11 Strings",
+      "order": 64,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.065",
+      "name": "B12 Violin",
+      "order": 65,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.066",
+      "name": "B13 Chorus Vibes",
+      "order": 66,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.067",
+      "name": "B14 Organ I",
+      "order": 67,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.068",
+      "name": "B15 Harpsichord I",
+      "order": 68,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.069",
+      "name": "B16 Recorder",
+      "order": 69,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.070",
+      "name": "B17 Perc Pluck",
+      "order": 70,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.071",
+      "name": "B18 Noise Sweep",
+      "order": 71,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.072",
+      "name": "B21 Space Chimes",
+      "order": 72,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.073",
+      "name": "B22 Nylon Guitar",
+      "order": 73,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.074",
+      "name": "B23 Orchestral Pad",
+      "order": 74,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.075",
+      "name": "B24 Bright Pluck",
+      "order": 75,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.076",
+      "name": "B25 Organ Bell",
+      "order": 76,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.077",
+      "name": "B26 Accordion",
+      "order": 77,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.078",
+      "name": "B27 FX Rise 1",
+      "order": 78,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.079",
+      "name": "B28 FX Rise 2",
+      "order": 79,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.080",
+      "name": "B31 Brass",
+      "order": 80,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.081",
+      "name": "B32 Helicopter",
+      "order": 81,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.082",
+      "name": "B33 Lute",
+      "order": 82,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.083",
+      "name": "B34 Chorus Funk",
+      "order": 83,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.084",
+      "name": "B35 Tomita",
+      "order": 84,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.085",
+      "name": "B36 FX Sweep 1",
+      "order": 85,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.086",
+      "name": "B37 Sharp Reed",
+      "order": 86,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.087",
+      "name": "B38 Bass Pluck",
+      "order": 87,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.088",
+      "name": "B41 Resonant Rise",
+      "order": 88,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.089",
+      "name": "B42 Harpsichord 2",
+      "order": 89,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.090",
+      "name": "B43 Dark Ensemble",
+      "order": 90,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.091",
+      "name": "B44 Contact Wah",
+      "order": 91,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.092",
+      "name": "B45 Noise Sweep 2",
+      "order": 92,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.093",
+      "name": "B46 Glassy Wah",
+      "order": 93,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.094",
+      "name": "B47 Phase Ensemble",
+      "order": 94,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.095",
+      "name": "B48 Chorused Bell",
+      "order": 95,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.096",
+      "name": "B51 Clav",
+      "order": 96,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.097",
+      "name": "B52 Organ 2",
+      "order": 97,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.098",
+      "name": "B53 Bassoon",
+      "order": 98,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.099",
+      "name": "B54 Auto Noise Sweep",
+      "order": 99,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.100",
+      "name": "B55 Brass Ensemble",
+      "order": 100,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.101",
+      "name": "B56 Ethereal",
+      "order": 101,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.102",
+      "name": "B57 Chorus Bell 2",
+      "order": 102,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.103",
+      "name": "B58 Blizzard",
+      "order": 103,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.104",
+      "name": "B61 E Piano Trem",
+      "order": 104,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.105",
+      "name": "B62 Clarinet",
+      "order": 105,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.106",
+      "name": "B63 Thunder",
+      "order": 106,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.107",
+      "name": "B64 Reedy Organ",
+      "order": 107,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.108",
+      "name": "B65 Flute / Horn",
+      "order": 108,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.109",
+      "name": "B66 Toy Rhodes",
+      "order": 109,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.110",
+      "name": "B67 Surf's Up",
+      "order": 110,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.111",
+      "name": "B68 OW Bass",
+      "order": 111,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.112",
+      "name": "B71 Piccolo",
+      "order": 112,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.113",
+      "name": "B72 Melodic Taps",
+      "order": 113,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.114",
+      "name": "B73 Meow Bass",
+      "order": 114,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.115",
+      "name": "B74 Violin (high)",
+      "order": 115,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.116",
+      "name": "B75 High Bells",
+      "order": 116,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.117",
+      "name": "B76 Rolling Wah",
+      "order": 117,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.118",
+      "name": "B77 Ping Bell",
+      "order": 118,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.119",
+      "name": "B78 Brassy Organ",
+      "order": 119,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.120",
+      "name": "B81 Low Dark Strings",
+      "order": 120,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.121",
+      "name": "B82 Piccolo Trumpet",
+      "order": 121,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.122",
+      "name": "B83 Cello",
+      "order": 122,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.123",
+      "name": "B84 High Strings",
+      "order": 123,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.124",
+      "name": "B85 Rocket Men",
+      "order": 124,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.125",
+      "name": "B86 Forbidden Planet",
+      "order": 125,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.126",
+      "name": "B87 Froggy",
+      "order": 126,
+      "tags": [
+        "rf106"
+      ]
+    },
+    {
+      "bank": "factory.rf106",
+      "editable": false,
+      "id": "factory.rf106.127",
+      "name": "B88 Owgan",
+      "order": 127,
+      "tags": [
+        "rf106"
+      ]
+    }
+  ],
+  "schema_version": 1
+}
