@@ -1225,6 +1225,8 @@ button.model-option {
   height: 178px;
   position: relative;
   isolation: isolate;
+  cursor: ns-resize;
+  touch-action: none;
   user-select: none;
 }
 
@@ -1459,6 +1461,7 @@ input.parameter-slider {
   appearance: none;
   background: transparent;
   cursor: ns-resize;
+  pointer-events: none;
   touch-action: none;
   transform: rotate(-90deg);
   transform-origin: center;

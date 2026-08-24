@@ -71,7 +71,7 @@ cargo +stable-x86_64-pc-windows-msvc install wasm-bindgen-cli --version 0.2.127 
 ./tools/build-package.ps1
 ```
 
-The package is written to `artifacts/rf-106-0.2.7.rfplugin`. It contains the
+The package is written to `artifacts/rf-106-0.2.8.rfplugin`. It contains the
 audio component, versioned metadata and the plugin-owned web interface; it does
 not contain a platform-specific executable.
 

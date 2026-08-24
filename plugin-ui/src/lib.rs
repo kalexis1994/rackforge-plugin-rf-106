@@ -85,16 +85,16 @@ fn escape_html(value: &str) -> String {
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
-fn vertical_fader_value(
-    client_y: f64,
-    track_top: f64,
+fn relative_vertical_fader_value(
+    start_value: f64,
+    delta_y: f64,
     track_height: f64,
     minimum: f64,
     maximum: f64,
     step: f64,
 ) -> f64 {
-    if !client_y.is_finite()
-        || !track_top.is_finite()
+    if !start_value.is_finite()
+        || !delta_y.is_finite()
         || !track_height.is_finite()
         || track_height <= 0.0
         || !minimum.is_finite()
@@ -108,19 +108,12 @@ fn vertical_fader_value(
     // After the -90 degree rotation that becomes the vertical travel inset.
     let inset = 9.5_f64.min(track_height / 2.0);
     let travel = (track_height - inset * 2.0).max(1.0);
-    let bottom = track_top + track_height - inset;
-    let normalized = ((bottom - client_y) / travel).clamp(0.0, 1.0);
-    let raw = minimum + normalized * (maximum - minimum);
+    let raw = start_value + delta_y / travel * (maximum - minimum);
     if step.is_finite() && step > 0.0 {
         (minimum + ((raw - minimum) / step).round() * step).clamp(minimum, maximum)
     } else {
         raw.clamp(minimum, maximum)
     }
-}
-
-#[cfg(any(target_arch = "wasm32", test))]
-fn native_fader_event_is_guarded(now_ms: f64, guard_until_ms: f64) -> bool {
-    now_ms.is_finite() && now_ms <= guard_until_ms
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -175,11 +168,7 @@ impl ParameterDefault {
 mod browser {
     use super::*;
     use js_sys::{Object, Reflect};
-    use std::{
-        cell::{Cell, RefCell},
-        collections::BTreeMap,
-        rc::Rc,
-    };
+    use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
     use wasm_bindgen::{JsCast, JsValue, closure::Closure, prelude::wasm_bindgen};
     use web_sys::{Document, Element, Event, MessageEvent, MouseEvent, PointerEvent, Window};
 
@@ -2085,14 +2074,19 @@ mod browser {
             .ok()
     }
 
-    fn fader_from_pointer_event(event: &PointerEvent) -> Option<Element> {
-        event
+    fn fader_from_pointer_event(event: &PointerEvent) -> Option<(Element, Element)> {
+        let surface = event
             .target()?
             .dyn_into::<Element>()
             .ok()?
-            .closest("input.parameter-slider")
+            .closest(".rf-fader")
             .ok()
-            .flatten()
+            .flatten()?;
+        let input = surface
+            .query_selector("input.parameter-slider")
+            .ok()
+            .flatten()?;
+        Some((input, surface))
     }
 
     fn bender_from_pointer_event(event: &PointerEvent) -> Option<Element> {
@@ -2157,7 +2151,13 @@ mod browser {
         set_bender_visual(element, position, trigger);
     }
 
-    fn update_fader_from_pointer(app: &AppHandle, element: &Element, event: &PointerEvent) {
+    fn update_fader_from_drag(
+        app: &AppHandle,
+        element: &Element,
+        start_y: f64,
+        current_y: f64,
+        start_value: f64,
+    ) {
         let Some(index) = element
             .get_attribute("data-index")
             .and_then(|value| value.parse().ok())
@@ -2177,9 +2177,9 @@ mod browser {
             .and_then(|value| value.parse().ok())
             .unwrap_or(0.0);
         let rect = element.get_bounding_client_rect();
-        let value = vertical_fader_value(
-            f64::from(event.client_y()),
-            rect.top(),
+        let value = relative_vertical_fader_value(
+            start_value,
+            start_y - current_y,
             rect.height(),
             minimum,
             maximum,
@@ -2385,15 +2385,7 @@ mod browser {
             .add_event_listener_with_callback("click", click.as_ref().unchecked_ref())?;
         click.forget();
 
-        // A rotated native range and RackForge's screen-space vertical drag
-        // must not both write the same gesture. Some Chromium builds still
-        // emit a native input/change after preventDefault(), mapping the
-        // pointer on the unrotated horizontal axis and commonly producing the
-        // minimum value. Keep a short guard around pointer-owned fader input;
-        // keyboard events remain native and continue through this handler.
-        let native_fader_guard_until = Rc::new(Cell::new(0.0_f64));
         let input_app = app.clone();
-        let input_fader_guard = native_fader_guard_until.clone();
         let input = Closure::<dyn FnMut(Event)>::new(move |event| {
             let Some(element) = element_from_event(&event) else {
                 return;
@@ -2419,14 +2411,6 @@ mod browser {
                     }
                 }
                 Some("parameter") => {
-                    if element.matches("input.parameter-slider").unwrap_or(false)
-                        && native_fader_event_is_guarded(
-                            js_sys::Date::now(),
-                            input_fader_guard.get(),
-                        )
-                    {
-                        return;
-                    }
                     let index = element
                         .get_attribute("data-index")
                         .and_then(|value| value.parse().ok());
@@ -2446,10 +2430,12 @@ mod browser {
             .add_event_listener_with_callback("change", input.as_ref().unchecked_ref())?;
         input.forget();
 
-        // Android Chromium does not consistently drag a native range after it
-        // has been rotated into a vertical fader. Capture the active pointer and
-        // map its screen-space Y coordinate to the parameter value ourselves.
-        let active_fader_drag = Rc::new(RefCell::new(None::<(i32, Element)>));
+        // Chromium maps a rotated native range on its unrotated horizontal
+        // axis, which can overwrite a vertical gesture with the minimum value.
+        // Pointer input belongs to the fader surface instead; the range remains
+        // focusable for keyboard access. Drag relative to the value at press
+        // time so grabbing the handle never causes an initial jump.
+        let active_fader_drag = Rc::new(RefCell::new(None::<(i32, Element, Element, f64, f64)>));
         for event_name in [
             "pointerdown",
             "pointermove",
@@ -2459,7 +2445,6 @@ mod browser {
         ] {
             let drag_app = app.clone();
             let drag_state = active_fader_drag.clone();
-            let native_guard = native_fader_guard_until.clone();
             let drag = Closure::<dyn FnMut(PointerEvent)>::new(move |event: PointerEvent| {
                 let pointer_id = event.pointer_id();
                 match event_name {
@@ -2467,33 +2452,56 @@ mod browser {
                         if !event.is_primary() || event.button() != 0 {
                             return;
                         }
-                        let Some(element) = fader_from_pointer_event(&event) else {
+                        let Some((element, surface)) = fader_from_pointer_event(&event) else {
                             return;
                         };
                         event.prevent_default();
-                        native_guard.set(f64::INFINITY);
-                        let _ = element.set_pointer_capture(pointer_id);
-                        *drag_state.borrow_mut() = Some((pointer_id, element.clone()));
-                        update_fader_from_pointer(&drag_app, &element, &event);
+                        let start_value = numeric_value(&element).unwrap_or(0.0);
+                        let start_y = f64::from(event.client_y());
+                        let _ = surface.set_pointer_capture(pointer_id);
+                        let _ = element
+                            .clone()
+                            .dyn_into::<web_sys::HtmlElement>()
+                            .map(|element| element.focus());
+                        *drag_state.borrow_mut() =
+                            Some((pointer_id, element, surface, start_y, start_value));
                     }
                     "pointermove" => {
-                        let element = drag_state.borrow().as_ref().and_then(|(active, element)| {
-                            (*active == pointer_id).then(|| element.clone())
-                        });
-                        if let Some(element) = element {
+                        let drag = drag_state.borrow().as_ref().and_then(
+                            |(active, element, _, start_y, start_value)| {
+                                (*active == pointer_id)
+                                    .then(|| (element.clone(), *start_y, *start_value))
+                            },
+                        );
+                        if let Some((element, start_y, start_value)) = drag {
                             event.prevent_default();
-                            native_guard.set(js_sys::Date::now() + 120.0);
-                            update_fader_from_pointer(&drag_app, &element, &event);
+                            update_fader_from_drag(
+                                &drag_app,
+                                &element,
+                                start_y,
+                                f64::from(event.client_y()),
+                                start_value,
+                            );
                         }
                     }
                     "pointerup" => {
-                        let element = drag_state.borrow().as_ref().and_then(|(active, element)| {
-                            (*active == pointer_id).then(|| element.clone())
-                        });
-                        if let Some(element) = element {
+                        let drag = drag_state.borrow().as_ref().and_then(
+                            |(active, element, surface, start_y, start_value)| {
+                                (*active == pointer_id).then(|| {
+                                    (element.clone(), surface.clone(), *start_y, *start_value)
+                                })
+                            },
+                        );
+                        if let Some((element, surface, start_y, start_value)) = drag {
                             event.prevent_default();
-                            update_fader_from_pointer(&drag_app, &element, &event);
-                            let _ = element.release_pointer_capture(pointer_id);
+                            update_fader_from_drag(
+                                &drag_app,
+                                &element,
+                                start_y,
+                                f64::from(event.client_y()),
+                                start_value,
+                            );
+                            let _ = surface.release_pointer_capture(pointer_id);
                             *drag_state.borrow_mut() = None;
                         }
                     }
@@ -2501,9 +2509,8 @@ mod browser {
                         let is_active = drag_state
                             .borrow()
                             .as_ref()
-                            .is_some_and(|(active, _)| *active == pointer_id);
+                            .is_some_and(|(active, _, _, _, _)| *active == pointer_id);
                         if is_active {
-                            native_guard.set(js_sys::Date::now() + 120.0);
                             *drag_state.borrow_mut() = None;
                         }
                     }
@@ -2789,33 +2796,28 @@ mod tests {
     }
 
     #[test]
-    fn vertical_fader_drag_maps_touch_position_and_step() {
-        let top = 100.0;
+    fn vertical_fader_drag_is_relative_quantized_and_clamped() {
         let height = 159.0;
         assert_eq!(
-            vertical_fader_value(100.0, top, height, 0.0, 10.0, 1.0),
-            10.0
-        );
-        assert_eq!(
-            vertical_fader_value(259.0, top, height, 0.0, 10.0, 1.0),
-            0.0
-        );
-        assert_eq!(
-            vertical_fader_value(179.5, top, height, 0.0, 10.0, 1.0),
+            relative_vertical_fader_value(5.0, 0.0, height, 0.0, 10.0, 1.0),
             5.0
         );
         assert_eq!(
-            vertical_fader_value(165.0, top, height, -5.0, 5.0, 0.5),
-            1.0
+            relative_vertical_fader_value(5.0, 28.0, height, 0.0, 10.0, 1.0),
+            7.0
         );
-    }
-
-    #[test]
-    fn pointer_owned_fader_gesture_suppresses_late_native_range_events() {
-        assert!(native_fader_event_is_guarded(1_000.0, f64::INFINITY));
-        assert!(native_fader_event_is_guarded(1_100.0, 1_120.0));
-        assert!(!native_fader_event_is_guarded(1_121.0, 1_120.0));
-        assert!(!native_fader_event_is_guarded(f64::NAN, 1_120.0));
+        assert_eq!(
+            relative_vertical_fader_value(5.0, -28.0, height, 0.0, 10.0, 1.0),
+            3.0
+        );
+        assert_eq!(
+            relative_vertical_fader_value(8.0, 500.0, height, 0.0, 10.0, 1.0),
+            10.0
+        );
+        assert_eq!(
+            relative_vertical_fader_value(2.0, -500.0, height, 0.0, 10.0, 1.0),
+            0.0
+        );
     }
 
     #[test]
