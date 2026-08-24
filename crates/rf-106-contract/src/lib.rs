@@ -1,7 +1,7 @@
 #![no_std]
 
 pub const PLUGIN_ID: &str = "org.rackforge.rf-106";
-pub const PLUGIN_VERSION: &str = "0.2.6";
+pub const PLUGIN_VERSION: &str = "0.2.7";
 pub const STATE_SCHEMA_VERSION: u32 = 1;
 pub const DEFAULT_FACTORY_PROGRAM: u32 = 0;
 pub const NATIVE_PARAMETER_COUNT: usize = 56;
