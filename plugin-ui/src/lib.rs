@@ -117,6 +117,26 @@ fn relative_vertical_fader_value(
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ParameterChangeUpdate {
+    FullRender,
+    TargetOnly,
+    TargetAndDeferredRender,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn parameter_change_update(
+    active_parameter_drag: Option<u32>,
+    changed_parameter: u32,
+) -> ParameterChangeUpdate {
+    match active_parameter_drag {
+        None => ParameterChangeUpdate::FullRender,
+        Some(active) if active == changed_parameter => ParameterChangeUpdate::TargetOnly,
+        Some(_) => ParameterChangeUpdate::TargetAndDeferredRender,
+    }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
 fn bender_pointer_state(
     client_x: f64,
     client_y: f64,
@@ -271,6 +291,9 @@ mod browser {
         sequence: u64,
         pending_sound_id: Option<String>,
         parameter_refresh_generation: u64,
+        active_parameter_drag: Option<u32>,
+        render_after_parameter_drag: bool,
+        refresh_parameters_after_drag: bool,
         active_section: String,
         search_query: String,
         bridge_error: String,
@@ -299,6 +322,9 @@ mod browser {
                 sequence: 0,
                 pending_sound_id: None,
                 parameter_refresh_generation: 0,
+                active_parameter_drag: None,
+                render_after_parameter_drag: false,
+                refresh_parameters_after_drag: false,
                 active_section,
                 search_query: String::new(),
                 bridge_error: String::new(),
@@ -1969,7 +1995,7 @@ mod browser {
                     }
                     Err(error) => app.borrow_mut().bridge_error = error,
                 }
-                app.borrow().render();
+                render_or_defer(app);
             },
         );
     }
@@ -1993,7 +2019,7 @@ mod browser {
     }
 
     fn update_parameter_dom(app: &AppHandle, index: u32) {
-        let (document, label, redraw_envelope, knob_angle) = {
+        let (document, value, label, redraw_envelope, knob_angle) = {
             let app = app.borrow();
             let parameter = app.snapshot.as_ref().and_then(|snapshot| {
                 snapshot
@@ -2021,11 +2047,20 @@ mod browser {
             };
             (
                 app.document.clone(),
+                value,
                 value_label(parameter, value),
                 parameter.page == "envelope",
                 knob_angle,
             )
         };
+        if let Ok(Some(input)) = document.query_selector(&format!("input[data-index=\"{index}\"]"))
+        {
+            let _ = Reflect::set(
+                input.as_ref(),
+                &JsValue::from_str("value"),
+                &JsValue::from_str(&value.to_string()),
+            );
+        }
         if let Ok(Some(output)) =
             document.query_selector(&format!("[data-output-index=\"{index}\"]"))
         {
@@ -2040,6 +2075,38 @@ mod browser {
         if redraw_envelope && let Ok(Some(envelope)) = document.query_selector(".envelope-display")
         {
             envelope.set_outer_html(&app.borrow().render_envelope());
+        }
+    }
+
+    fn render_or_defer(app: &AppHandle) {
+        let render_now = {
+            let mut state = app.borrow_mut();
+            if state.active_parameter_drag.is_some() {
+                state.render_after_parameter_drag = true;
+                false
+            } else {
+                true
+            }
+        };
+        if render_now {
+            app.borrow().render();
+        }
+    }
+
+    fn finish_parameter_drag(app: &AppHandle) {
+        let (refresh, render) = {
+            let mut state = app.borrow_mut();
+            state.active_parameter_drag = None;
+            let refresh = state.refresh_parameters_after_drag;
+            let render = state.render_after_parameter_drag;
+            state.refresh_parameters_after_drag = false;
+            state.render_after_parameter_drag = false;
+            (refresh, render)
+        };
+        if refresh {
+            refresh_parameters(app);
+        } else if render {
+            app.borrow().render();
         }
     }
 
@@ -2458,6 +2525,9 @@ mod browser {
                         event.prevent_default();
                         let start_value = numeric_value(&element).unwrap_or(0.0);
                         let start_y = f64::from(event.client_y());
+                        let parameter_index = element
+                            .get_attribute("data-index")
+                            .and_then(|value| value.parse().ok());
                         let _ = surface.set_pointer_capture(pointer_id);
                         let _ = element
                             .clone()
@@ -2465,6 +2535,12 @@ mod browser {
                             .map(|element| element.focus());
                         *drag_state.borrow_mut() =
                             Some((pointer_id, element, surface, start_y, start_value));
+                        if let Some(parameter_index) = parameter_index {
+                            let mut app = drag_app.borrow_mut();
+                            app.active_parameter_drag = Some(parameter_index);
+                            app.render_after_parameter_drag = false;
+                            app.refresh_parameters_after_drag = false;
+                        }
                     }
                     "pointermove" => {
                         let drag = drag_state.borrow().as_ref().and_then(
@@ -2503,6 +2579,7 @@ mod browser {
                             );
                             let _ = surface.release_pointer_capture(pointer_id);
                             *drag_state.borrow_mut() = None;
+                            finish_parameter_drag(&drag_app);
                         }
                     }
                     "pointercancel" | "lostpointercapture" => {
@@ -2512,6 +2589,7 @@ mod browser {
                             .is_some_and(|(active, _, _, _, _)| *active == pointer_id);
                         if is_active {
                             *drag_state.borrow_mut() = None;
+                            finish_parameter_drag(&drag_app);
                         }
                     }
                     _ => {}
@@ -2674,11 +2752,23 @@ mod browser {
                         let changed = previous.as_deref()
                             != Some(context.instance.selected_sound_id.as_str());
                         let had_snapshot = message_app.borrow().snapshot.is_some();
-                        {
+                        let active_drag = {
                             let mut app = message_app.borrow_mut();
                             app.context = Some(context);
-                        }
-                        if changed && had_snapshot {
+                            if app.active_parameter_drag.is_some() {
+                                if changed && had_snapshot {
+                                    app.refresh_parameters_after_drag = true;
+                                } else {
+                                    app.render_after_parameter_drag = true;
+                                }
+                                true
+                            } else {
+                                false
+                            }
+                        };
+                        if active_drag {
+                            return;
+                        } else if changed && had_snapshot {
                             refresh_parameters(&message_app);
                         } else {
                             message_app.borrow().render();
@@ -2699,11 +2789,22 @@ mod browser {
                         .and_then(|value| value.as_f64())
                         .filter(|value| value.is_finite());
                     if let (Some(index), Some(value)) = (index, value) {
-                        message_app
-                            .borrow_mut()
-                            .parameter_values
-                            .insert(index, value);
-                        message_app.borrow().render();
+                        let update = {
+                            let mut app = message_app.borrow_mut();
+                            app.parameter_values.insert(index, value);
+                            let update = parameter_change_update(app.active_parameter_drag, index);
+                            if update == ParameterChangeUpdate::TargetAndDeferredRender {
+                                app.render_after_parameter_drag = true;
+                            }
+                            update
+                        };
+                        match update {
+                            ParameterChangeUpdate::FullRender => message_app.borrow().render(),
+                            ParameterChangeUpdate::TargetOnly
+                            | ParameterChangeUpdate::TargetAndDeferredRender => {
+                                update_parameter_dom(&message_app, index);
+                            }
+                        }
                     }
                 }
                 Some("response") => {
@@ -2817,6 +2918,22 @@ mod tests {
         assert_eq!(
             relative_vertical_fader_value(2.0, -500.0, height, 0.0, 10.0, 1.0),
             0.0
+        );
+    }
+
+    #[test]
+    fn parameter_confirmation_does_not_replace_an_active_fader() {
+        assert_eq!(
+            parameter_change_update(None, 17),
+            ParameterChangeUpdate::FullRender
+        );
+        assert_eq!(
+            parameter_change_update(Some(17), 17),
+            ParameterChangeUpdate::TargetOnly
+        );
+        assert_eq!(
+            parameter_change_update(Some(17), 18),
+            ParameterChangeUpdate::TargetAndDeferredRender
         );
     }
 

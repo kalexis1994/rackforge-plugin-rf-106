@@ -3,7 +3,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 rackforge_root="${RACKFORGE_ROOT:-$repo_root/../rackforge}"
-output="${1:-$repo_root/artifacts/rf-106-0.2.8.rfplugin}"
+output="${1:-$repo_root/artifacts/rf-106-0.2.9.rfplugin}"
 component="$repo_root/target/wasm32-unknown-unknown/release/rackforge_rf_106.wasm"
 stage=""
 cleanup() {
