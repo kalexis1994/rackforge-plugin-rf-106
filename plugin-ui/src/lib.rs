@@ -119,6 +119,11 @@ fn vertical_fader_value(
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
+fn native_fader_event_is_guarded(now_ms: f64, guard_until_ms: f64) -> bool {
+    now_ms.is_finite() && now_ms <= guard_until_ms
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
 fn bender_pointer_state(
     client_x: f64,
     client_y: f64,
@@ -170,7 +175,11 @@ impl ParameterDefault {
 mod browser {
     use super::*;
     use js_sys::{Object, Reflect};
-    use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
+    use std::{
+        cell::{Cell, RefCell},
+        collections::BTreeMap,
+        rc::Rc,
+    };
     use wasm_bindgen::{JsCast, JsValue, closure::Closure, prelude::wasm_bindgen};
     use web_sys::{Document, Element, Event, MessageEvent, MouseEvent, PointerEvent, Window};
 
@@ -2376,7 +2385,15 @@ mod browser {
             .add_event_listener_with_callback("click", click.as_ref().unchecked_ref())?;
         click.forget();
 
+        // A rotated native range and RackForge's screen-space vertical drag
+        // must not both write the same gesture. Some Chromium builds still
+        // emit a native input/change after preventDefault(), mapping the
+        // pointer on the unrotated horizontal axis and commonly producing the
+        // minimum value. Keep a short guard around pointer-owned fader input;
+        // keyboard events remain native and continue through this handler.
+        let native_fader_guard_until = Rc::new(Cell::new(0.0_f64));
         let input_app = app.clone();
+        let input_fader_guard = native_fader_guard_until.clone();
         let input = Closure::<dyn FnMut(Event)>::new(move |event| {
             let Some(element) = element_from_event(&event) else {
                 return;
@@ -2402,6 +2419,14 @@ mod browser {
                     }
                 }
                 Some("parameter") => {
+                    if element.matches("input.parameter-slider").unwrap_or(false)
+                        && native_fader_event_is_guarded(
+                            js_sys::Date::now(),
+                            input_fader_guard.get(),
+                        )
+                    {
+                        return;
+                    }
                     let index = element
                         .get_attribute("data-index")
                         .and_then(|value| value.parse().ok());
@@ -2434,6 +2459,7 @@ mod browser {
         ] {
             let drag_app = app.clone();
             let drag_state = active_fader_drag.clone();
+            let native_guard = native_fader_guard_until.clone();
             let drag = Closure::<dyn FnMut(PointerEvent)>::new(move |event: PointerEvent| {
                 let pointer_id = event.pointer_id();
                 match event_name {
@@ -2445,6 +2471,7 @@ mod browser {
                             return;
                         };
                         event.prevent_default();
+                        native_guard.set(f64::INFINITY);
                         let _ = element.set_pointer_capture(pointer_id);
                         *drag_state.borrow_mut() = Some((pointer_id, element.clone()));
                         update_fader_from_pointer(&drag_app, &element, &event);
@@ -2455,6 +2482,7 @@ mod browser {
                         });
                         if let Some(element) = element {
                             event.prevent_default();
+                            native_guard.set(js_sys::Date::now() + 120.0);
                             update_fader_from_pointer(&drag_app, &element, &event);
                         }
                     }
@@ -2475,6 +2503,7 @@ mod browser {
                             .as_ref()
                             .is_some_and(|(active, _)| *active == pointer_id);
                         if is_active {
+                            native_guard.set(js_sys::Date::now() + 120.0);
                             *drag_state.borrow_mut() = None;
                         }
                     }
@@ -2779,6 +2808,14 @@ mod tests {
             vertical_fader_value(165.0, top, height, -5.0, 5.0, 0.5),
             1.0
         );
+    }
+
+    #[test]
+    fn pointer_owned_fader_gesture_suppresses_late_native_range_events() {
+        assert!(native_fader_event_is_guarded(1_000.0, f64::INFINITY));
+        assert!(native_fader_event_is_guarded(1_100.0, 1_120.0));
+        assert!(!native_fader_event_is_guarded(1_121.0, 1_120.0));
+        assert!(!native_fader_event_is_guarded(f64::NAN, 1_120.0));
     }
 
     #[test]
