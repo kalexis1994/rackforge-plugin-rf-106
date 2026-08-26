@@ -1,5 +1,6 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
+  "display_decimals": 2,
   "pages": [
     { "id": "level", "name": "Level", "order": 0, "header": "RF-106" },
     { "id": "lfo", "name": "LFO", "order": 1, "header": "RF-106" },

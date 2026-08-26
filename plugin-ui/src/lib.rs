@@ -2969,10 +2969,21 @@ mod tests {
             "../../plugin/package/metadata/parameters.json"
         ))
         .unwrap();
+        assert_eq!(schema["schema_version"].as_u64(), Some(3));
+        assert_eq!(schema["display_decimals"].as_u64(), Some(2));
         let parameters = schema["parameters"].as_array().unwrap();
         assert_eq!(parameters.len(), rf_106_contract::PUBLIC_PARAMETER_COUNT);
         for (index, parameter) in parameters.iter().enumerate() {
             assert_eq!(parameter["index"].as_u64(), Some(index as u64));
+            assert_eq!(parameter["flags"]["read_only"].as_bool(), Some(false));
+            assert!(
+                matches!(
+                    parameter["kind"]["type"].as_str(),
+                    Some("float" | "integer" | "boolean" | "enum" | "trigger")
+                ),
+                "parameter {} uses a control kind LITTLE cannot edit",
+                parameter["id"]
+            );
         }
         for id in [
             "lfo-rate",
@@ -3031,6 +3042,12 @@ mod tests {
                 pages
                     .iter()
                     .any(|candidate| candidate["id"].as_str() == Some(page))
+            );
+            assert!(
+                parameters
+                    .iter()
+                    .any(|parameter| parameter["page"].as_str() == Some(page)),
+                "LITTLE page {page} must expose at least one control"
             );
         }
     }

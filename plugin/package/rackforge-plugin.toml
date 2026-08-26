@@ -1,8 +1,9 @@
-schema_version = 2
+schema_version = 3
 id = "org.rackforge.rf-106"
 name = "RF-106"
+short_name = "RF-106"
 vendor = "RackForge Community"
-version = "0.2.9"
+version = "0.2.12"
 kind = "instrument"
 state_version = 1
 capabilities = [

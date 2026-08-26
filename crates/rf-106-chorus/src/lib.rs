@@ -105,16 +105,35 @@ impl ChorusMode {
 #[derive(Clone, Copy, Debug, Default)]
 struct OnePoleLowPass {
     state: f32,
+    sample_rate: f32,
+    cutoff_hz: f32,
+    coefficient: f32,
 }
 
 impl OnePoleLowPass {
+    const fn new() -> Self {
+        Self {
+            state: 0.0,
+            sample_rate: 0.0,
+            cutoff_hz: 0.0,
+            coefficient: 0.0,
+        }
+    }
+
     fn reset(&mut self) {
         self.state = 0.0;
     }
 
     fn process(&mut self, input: f32, sample_rate: f32, cutoff_hz: f32) -> f32 {
         let cutoff = cutoff_hz.clamp(10.0, sample_rate * 0.45);
-        let g = libm::tanf(PI * cutoff / sample_rate);
+        if self.sample_rate.to_bits() != sample_rate.to_bits()
+            || self.cutoff_hz.to_bits() != cutoff.to_bits()
+        {
+            self.coefficient = libm::tanf(PI * cutoff / sample_rate);
+            self.sample_rate = sample_rate;
+            self.cutoff_hz = cutoff;
+        }
+        let g = self.coefficient;
         let delta = (input - self.state) * g / (1.0 + g);
         let output = self.state + delta;
         self.state = output + delta;
@@ -136,9 +155,9 @@ impl Mn3009Line {
         Self {
             buffer: [0.0; DELAY_CAPACITY],
             write: 0,
-            pre_filter: [OnePoleLowPass { state: 0.0 }, OnePoleLowPass { state: 0.0 }],
-            bbd_bandwidth: OnePoleLowPass { state: 0.0 },
-            post_filter: [OnePoleLowPass { state: 0.0 }, OnePoleLowPass { state: 0.0 }],
+            pre_filter: [OnePoleLowPass::new(), OnePoleLowPass::new()],
+            bbd_bandwidth: OnePoleLowPass::new(),
+            post_filter: [OnePoleLowPass::new(), OnePoleLowPass::new()],
         }
     }
 
@@ -539,6 +558,31 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn fixed_filter_coefficient_caches_are_sample_exact() {
+        let mut cached = StereoChorus::new();
+        cached.set_mode(ChorusMode::I);
+        for sample in 0..256 {
+            let input = (sample as f32 * 0.03125).sin() * 0.25;
+            let _ = cached.process(input, 48_000.0);
+        }
+        let mut rebuilt = cached;
+        for line in &mut rebuilt.lines {
+            for filter in &mut line.pre_filter {
+                filter.sample_rate = 0.0;
+            }
+            line.bbd_bandwidth.sample_rate = 0.0;
+            for filter in &mut line.post_filter {
+                filter.sample_rate = 0.0;
+            }
+        }
+
+        let cached_output = cached.process(-0.125, 48_000.0);
+        let rebuilt_output = rebuilt.process(-0.125, 48_000.0);
+        assert_eq!(cached_output.0.to_bits(), rebuilt_output.0.to_bits());
+        assert_eq!(cached_output.1.to_bits(), rebuilt_output.1.to_bits());
     }
 
     #[test]

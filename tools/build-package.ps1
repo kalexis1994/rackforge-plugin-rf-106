@@ -10,7 +10,7 @@ if (-not $RackForgeRoot) {
 }
 $RackForgeRoot = (Resolve-Path $RackForgeRoot).Path
 if (-not $Output) {
-    $Output = Join-Path $repoRoot 'artifacts\rf-106-0.2.9.rfplugin'
+    $Output = Join-Path $repoRoot 'artifacts\rf-106-0.2.12.rfplugin'
 }
 $Output = [System.IO.Path]::GetFullPath($Output)
 if (-not $Output.EndsWith('.rfplugin', [System.StringComparison]::OrdinalIgnoreCase)) {

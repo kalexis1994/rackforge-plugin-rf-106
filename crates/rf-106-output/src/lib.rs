@@ -168,6 +168,9 @@ impl HpfPosition {
 #[derive(Clone, Copy, Debug, Default)]
 struct OnePoleHighPass {
     low_state: f32,
+    sample_rate: f32,
+    cutoff_hz: f32,
+    coefficient: f32,
 }
 
 impl OnePoleHighPass {
@@ -176,7 +179,14 @@ impl OnePoleHighPass {
     }
 
     fn process(&mut self, input: f32, sample_rate: f32, cutoff_hz: f32) -> f32 {
-        let g = libm::tanf(PI * cutoff_hz / sample_rate).clamp(0.0, 1.0);
+        if self.sample_rate.to_bits() != sample_rate.to_bits()
+            || self.cutoff_hz.to_bits() != cutoff_hz.to_bits()
+        {
+            self.coefficient = libm::tanf(PI * cutoff_hz / sample_rate).clamp(0.0, 1.0);
+            self.sample_rate = sample_rate;
+            self.cutoff_hz = cutoff_hz;
+        }
+        let g = self.coefficient;
         let high = (input - self.low_state) / (1.0 + g);
         self.low_state += 2.0 * g * high;
         high
@@ -279,8 +289,18 @@ pub struct JackBoardHpf {
 impl JackBoardHpf {
     pub const fn new() -> Self {
         Self {
-            low_cut: OnePoleHighPass { low_state: 0.0 },
-            high_cut: OnePoleHighPass { low_state: 0.0 },
+            low_cut: OnePoleHighPass {
+                low_state: 0.0,
+                sample_rate: 0.0,
+                cutoff_hz: 0.0,
+                coefficient: 0.0,
+            },
+            high_cut: OnePoleHighPass {
+                low_state: 0.0,
+                sample_rate: 0.0,
+                cutoff_hz: 0.0,
+                coefficient: 0.0,
+            },
             bass_boost: BassBoost::new(),
         }
     }
@@ -626,5 +646,20 @@ mod tests {
                 assert!(output.is_finite());
             }
         }
+    }
+
+    #[test]
+    fn fixed_hpf_coefficient_cache_is_sample_exact() {
+        let mut cached = JackBoardHpf::new();
+        for sample in 0..64 {
+            let _ = cached.process(sample as f32 / 64.0, 48_000.0, HpfPosition::LowCut);
+        }
+        let mut rebuilt = cached;
+        rebuilt.low_cut.sample_rate = 0.0;
+        rebuilt.high_cut.sample_rate = 0.0;
+
+        let cached_output = cached.process(-0.25, 48_000.0, HpfPosition::HighCut);
+        let rebuilt_output = rebuilt.process(-0.25, 48_000.0, HpfPosition::HighCut);
+        assert_eq!(cached_output.to_bits(), rebuilt_output.to_bits());
     }
 }

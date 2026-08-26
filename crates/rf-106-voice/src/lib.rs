@@ -130,6 +130,16 @@ pub struct A1qH80017a {
     vca_gain: f32,
     reset_seed: u32,
     thermal_seed: u32,
+    vcf_sample_rate: f32,
+    vcf_cutoff_dac: u16,
+    vcf_resonance_dac: u16,
+    vcf_coefficient: f32,
+    vcf_feedback: f32,
+    vcf_input_compensation: f32,
+    vca_sample_rate: f32,
+    vca_control: f32,
+    vca_target: f32,
+    vca_slew: f32,
 }
 
 impl A1qH80017a {
@@ -146,6 +156,16 @@ impl A1qH80017a {
             vca_gain: 0.0,
             reset_seed: seed,
             thermal_seed: seed,
+            vcf_sample_rate: 0.0,
+            vcf_cutoff_dac: u16::MAX,
+            vcf_resonance_dac: u16::MAX,
+            vcf_coefficient: 0.0,
+            vcf_feedback: 0.0,
+            vcf_input_compensation: 0.0,
+            vca_sample_rate: 0.0,
+            vca_control: -1.0,
+            vca_target: 0.0,
+            vca_slew: 0.0,
         }
     }
 
@@ -165,22 +185,36 @@ impl A1qH80017a {
         cutoff_dac: u16,
         resonance_dac: u16,
     ) -> f32 {
-        let cutoff = nominal_vcf_hz(cutoff_dac).clamp(5.0, sample_rate * 0.45);
-        // Two half-steps keep the nonlinear feedback path stable through the
-        // full control range without allocating an oversampling buffer.
-        let sub_rate = sample_rate * 2.0;
-        let g = libm::tanf(core::f32::consts::PI * cutoff / sub_rate);
-        let coefficient = (g / (1.0 + g)).clamp(0.0, 0.95);
-        let feedback = provisional_resonance_feedback(resonance_dac);
-        let input_compensation = provisional_vcf_input_compensation(feedback, cutoff);
+        // B_2 holds the cutoff DAC word for an entire foreground control
+        // cycle, while resonance and sample rate normally remain unchanged
+        // for much longer. Rebuilding these transcendental coefficients per
+        // audio sample wastes most of an ARM core without changing a single
+        // output bit. Cache them against the exact hardware-domain inputs.
+        if self.vcf_sample_rate.to_bits() != sample_rate.to_bits()
+            || self.vcf_cutoff_dac != cutoff_dac
+            || self.vcf_resonance_dac != resonance_dac
+        {
+            let cutoff = nominal_vcf_hz(cutoff_dac).clamp(5.0, sample_rate * 0.45);
+            // Two half-steps keep the nonlinear feedback path stable through
+            // the full control range without allocating an oversampling buffer.
+            let sub_rate = sample_rate * 2.0;
+            let g = libm::tanf(core::f32::consts::PI * cutoff / sub_rate);
+            self.vcf_coefficient = (g / (1.0 + g)).clamp(0.0, 0.95);
+            self.vcf_feedback = provisional_resonance_feedback(resonance_dac);
+            self.vcf_input_compensation =
+                provisional_vcf_input_compensation(self.vcf_feedback, cutoff);
+            self.vcf_sample_rate = sample_rate;
+            self.vcf_cutoff_dac = cutoff_dac;
+            self.vcf_resonance_dac = resonance_dac;
+        }
         let mut output = self.filter_state[3];
         for _ in 0..2 {
             let excitation = self.thermal_excitation();
             output = process_vcf_substep(
                 &mut self.filter_state,
-                (input + excitation) * input_compensation,
-                coefficient,
-                feedback,
+                (input + excitation) * self.vcf_input_compensation,
+                self.vcf_coefficient,
+                self.vcf_feedback,
             );
         }
         if output.is_finite() {
@@ -195,9 +229,18 @@ impl A1qH80017a {
     /// The static law is derived from the documented PNP emitter converter;
     /// its absolute component tolerances remain a physical calibration item.
     pub fn process_vca(&mut self, input: f32, sample_rate: f32, control: f32) -> f32 {
-        let target = nominal_vca_gain(control);
-        let slew = 1.0 - libm::expf(-1.0 / (sample_rate * 0.001).max(1.0));
-        self.vca_gain += slew * (target - self.vca_gain);
+        // The envelope and gate control are held by the emulated B_2 control
+        // cycle. Preserve the per-sample BA662 slew, but only solve the static
+        // transistor law when that held control (or the rate) actually changes.
+        if self.vca_sample_rate.to_bits() != sample_rate.to_bits()
+            || self.vca_control.to_bits() != control.to_bits()
+        {
+            self.vca_target = nominal_vca_gain(control);
+            self.vca_slew = 1.0 - libm::expf(-1.0 / (sample_rate * 0.001).max(1.0));
+            self.vca_sample_rate = sample_rate;
+            self.vca_control = control;
+        }
+        self.vca_gain += self.vca_slew * (self.vca_target - self.vca_gain);
         input * self.vca_gain
     }
 
@@ -1360,6 +1403,27 @@ mod tests {
             chip.process_vca(1.0, 48_000.0, 1.0);
         }
         assert!(chip.vca_gain() > 0.99);
+    }
+
+    #[test]
+    fn analog_coefficient_caches_are_sample_exact() {
+        let mut cached = A1qH80017a::with_seed(0x1234_5678);
+        for _ in 0..64 {
+            let filtered = cached.process_vcf(0.25, 48_000.0, 8_192, 6_144);
+            let _ = cached.process_vca(filtered, 48_000.0, 0.625);
+        }
+
+        let mut rebuilt = cached;
+        rebuilt.vcf_sample_rate = 0.0;
+        rebuilt.vca_sample_rate = 0.0;
+
+        let cached_filtered = cached.process_vcf(-0.125, 48_000.0, 8_192, 6_144);
+        let rebuilt_filtered = rebuilt.process_vcf(-0.125, 48_000.0, 8_192, 6_144);
+        assert_eq!(cached_filtered.to_bits(), rebuilt_filtered.to_bits());
+
+        let cached_output = cached.process_vca(cached_filtered, 48_000.0, 0.625);
+        let rebuilt_output = rebuilt.process_vca(rebuilt_filtered, 48_000.0, 0.625);
+        assert_eq!(cached_output.to_bits(), rebuilt_output.to_bits());
     }
 
     #[test]

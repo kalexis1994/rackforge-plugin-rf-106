@@ -110,7 +110,7 @@ source = "git+https://github.com/kalexis1994/rackforge.git?rev=8f970390379b5c503
 
 [[package]]
 name = "rackforge-rf-106"
-version = "0.2.9"
+version = "0.2.12"
 dependencies = [
  "libm",
  "rackforge-plugin-sdk",
@@ -121,7 +121,7 @@ dependencies = [
 
 [[package]]
 name = "rf-106-chorus"
-version = "0.2.9"
+version = "0.2.12"
 dependencies = [
  "hound",
  "libm",
@@ -130,7 +130,7 @@ dependencies = [
 
 [[package]]
 name = "rf-106-circuit-lab"
-version = "0.2.9"
+version = "0.2.12"
 dependencies = [
  "serde",
  "serde_json",
@@ -138,18 +138,18 @@ dependencies = [
 
 [[package]]
 name = "rf-106-contract"
-version = "0.2.9"
+version = "0.2.12"
 
 [[package]]
 name = "rf-106-control"
-version = "0.2.9"
+version = "0.2.12"
 dependencies = [
  "libm",
 ]
 
 [[package]]
 name = "rf-106-dsp"
-version = "0.2.9"
+version = "0.2.12"
 dependencies = [
  "hound",
  "libm",
@@ -162,7 +162,7 @@ dependencies = [
 
 [[package]]
 name = "rf-106-metadata"
-version = "0.2.9"
+version = "0.2.12"
 dependencies = [
  "rf-106-contract",
  "serde_json",
@@ -170,21 +170,21 @@ dependencies = [
 
 [[package]]
 name = "rf-106-output"
-version = "0.2.9"
+version = "0.2.12"
 dependencies = [
  "libm",
 ]
 
 [[package]]
 name = "rf-106-voice"
-version = "0.2.9"
+version = "0.2.12"
 dependencies = [
  "libm",
 ]
 
 [[package]]
 name = "rf-106-web"
-version = "0.2.9"
+version = "0.2.12"
 dependencies = [
  "js-sys",
  "rf-106-contract",
