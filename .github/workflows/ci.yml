@@ -52,7 +52,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: kalexis1994/rackforge
-          ref: 8f970390379b5c503e035badcd2f1d6c176a27bf
+          ref: f9c0c931b48e1ebe8be3cfd8c323ef7d9a97af52
           path: .rackforge
           persist-credentials: false
 

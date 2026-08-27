@@ -35,4 +35,4 @@ thiserror = "2.0"
 
 # RackForge SDK revision implementing portable wasm-v1. Contributors can use
 # the adjacent checkout through `.cargo/config.toml.example`.
-rackforge-plugin-sdk = { git = "https://github.com/kalexis1994/rackforge.git", rev = "8f970390379b5c503e035badcd2f1d6c176a27bf" }
+rackforge-plugin-sdk = { git = "https://github.com/kalexis1994/rackforge.git", rev = "f9c0c931b48e1ebe8be3cfd8c323ef7d9a97af52" }
