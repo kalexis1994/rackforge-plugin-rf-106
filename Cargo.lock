@@ -159,8 +159,8 @@ dependencies = [
 
 [[package]]
 name = "rackforge-plugin-sdk"
-version = "0.1.5"
-source = "git+https://github.com/kalexis1994/rackforge.git?rev=f9c0c931b48e1ebe8be3cfd8c323ef7d9a97af52#f9c0c931b48e1ebe8be3cfd8c323ef7d9a97af52"
+version = "0.1.17"
+source = "git+https://github.com/kalexis1994/rackforge.git?rev=8124afc12aa0b2b2a968a6e3a1e160ea7e371cb7#8124afc12aa0b2b2a968a6e3a1e160ea7e371cb7"
 
 [[package]]
 name = "rackforge-rf-106"
