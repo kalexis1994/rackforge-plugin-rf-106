@@ -3,7 +3,7 @@ id = "org.rackforge.rf-106"
 name = "RF-106"
 short_name = "RF-106"
 vendor = "RackForge Community"
-version = "0.2.13"
+version = "0.2.19"
 kind = "instrument"
 state_version = 2
 capabilities = [
@@ -12,6 +12,7 @@ capabilities = [
     "presets",
     "state",
     "sample_accurate_automation",
+    "parallel_render_v1",
 ]
 ui_layouts = ["little@1"]
 config_mode = true
@@ -36,15 +37,64 @@ kind = "config"
 entry = "web/config.html"
 
 [[resources]]
-id = "program-bank"
-name = "JUNO-106 SysEx Program Bank"
+id = "cassette-1"
+name = "Program Cassette Bay 1"
 kind = "file"
 required = false
-data_path = "programs/import.syx"
+data_path = "programs/cassettes/bay-1.bank"
+
+[[resources]]
+id = "cassette-2"
+name = "Program Cassette Bay 2"
+kind = "file"
+required = false
+data_path = "programs/cassettes/bay-2.bank"
+
+[[resources]]
+id = "cassette-3"
+name = "Program Cassette Bay 3"
+kind = "file"
+required = false
+data_path = "programs/cassettes/bay-3.bank"
+
+[[resources]]
+id = "cassette-4"
+name = "Program Cassette Bay 4"
+kind = "file"
+required = false
+data_path = "programs/cassettes/bay-4.bank"
+
+[[resources]]
+id = "cassette-5"
+name = "Program Cassette Bay 5"
+kind = "file"
+required = false
+data_path = "programs/cassettes/bay-5.bank"
+
+[[resources]]
+id = "cassette-6"
+name = "Program Cassette Bay 6"
+kind = "file"
+required = false
+data_path = "programs/cassettes/bay-6.bank"
+
+[[resources]]
+id = "cassette-7"
+name = "Program Cassette Bay 7"
+kind = "file"
+required = false
+data_path = "programs/cassettes/bay-7.bank"
+
+[[resources]]
+id = "cassette-8"
+name = "Program Cassette Bay 8"
+kind = "file"
+required = false
+data_path = "programs/cassettes/bay-8.bank"
 
 [api]
 major = 1
-minor = 9
+minor = 10
 
 [branding]
 icon = "branding/icon.png"

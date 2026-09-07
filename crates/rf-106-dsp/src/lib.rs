@@ -16,7 +16,7 @@ use rf_106_control::{
     Portamento, VOICE_COUNT, VoiceAction, VoiceAllocator, combine_dco_lfo_depth,
     dco_lfo_destination_from_coefficient, vcf_lfo_destination,
 };
-use rf_106_output::{HpfPosition, M5218Summer, OutputPath, bender_board_volume};
+use rf_106_output::{HpfPosition, M5218Summer, OutputPath, bender_board_volume, module_voice_sum};
 use rf_106_voice::{
     A1qH80017a, CONTROL_CYCLE_SECONDS, Dco, DcoRange, Envelope, EnvelopeStage, NoiseSource,
     PwmMode, SourceControl, VcaMode, VcfControl, VcfEnvelopePolarity, resonance_dac, vca_control,
@@ -36,6 +36,29 @@ const PARAM_HOST_OUTPUT: usize = 44;
 /// Three measured B_2 loops are the current evidence-bounded settling window;
 /// raw hardware timing remains an E4 calibration item.
 const PROGRAM_CHANGE_SETTLING_CYCLES: f32 = 3.0;
+const MAX_PENDING_VOICE_COMMANDS: usize = VOICE_COUNT * 8;
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[repr(u8)]
+pub enum VoiceCommandKind {
+    #[default]
+    Reset = 0,
+    GateOn = 1,
+    GateOff = 2,
+    ReleaseSustain = 3,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
+pub struct VoiceCommand {
+    pub unit: u8,
+    pub kind: VoiceCommandKind,
+    pub note: u8,
+    pub velocity: u8,
+    pub sustain: u8,
+    pub reserved: [u8; 3],
+    pub epoch: u32,
+}
 
 #[derive(Clone, Copy)]
 struct Voice {
@@ -71,7 +94,8 @@ impl Voice {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
+#[repr(C)]
 struct VoiceControlFrame {
     dco_bend_semitones: f32,
     vcf_bend_word: i16,
@@ -79,6 +103,140 @@ struct VoiceControlFrame {
     vcf_lfo_word: i16,
     pwm_lfo_source: u16,
     noise: f32,
+}
+
+#[derive(Clone, Copy, Default)]
+#[repr(C)]
+pub struct CommonVoiceFrame {
+    parameters: VoiceParameters,
+    control: VoiceControlFrame,
+    portamento_switch_on: u32,
+    powered: u32,
+}
+
+/// Only the panel values consumed by a physical voice cell. Keeping this
+/// frame compact matters because the coordinator publishes one copy per
+/// sample to each parallel worker.
+#[derive(Clone, Copy, Default)]
+#[repr(C)]
+struct VoiceParameters {
+    portamento: f32,
+    envelope_attack: f32,
+    envelope_decay: f32,
+    envelope_sustain: f32,
+    envelope_release: f32,
+    tuning: f32,
+    pwm_depth: f32,
+    noise_level: f32,
+    sub_level: f32,
+    vcf_cutoff: f32,
+    vcf_resonance: f32,
+    vcf_envelope: f32,
+    vcf_key_follow: f32,
+    saw_on: u32,
+    pulse_on: u32,
+    pwm_manual: u32,
+    dco_range: u32,
+    vcf_envelope_negative: u32,
+    vca_gate: u32,
+    velocity_sensitive: u32,
+}
+
+impl VoiceParameters {
+    fn from_native(parameters: &[f64; NATIVE_PARAMETER_COUNT]) -> Self {
+        Self {
+            portamento: parameters[PARAM_PORTAMENTO] as f32,
+            envelope_attack: parameters[16] as f32,
+            envelope_decay: parameters[17] as f32,
+            envelope_sustain: parameters[18] as f32,
+            envelope_release: parameters[19] as f32,
+            tuning: parameters[PARAM_TUNING] as f32,
+            pwm_depth: parameters[PARAM_DCO_PWM_DEPTH] as f32,
+            noise_level: parameters[PARAM_DCO_NOISE_LEVEL] as f32,
+            sub_level: parameters[PARAM_DCO_SUB_LEVEL] as f32,
+            vcf_cutoff: parameters[10] as f32,
+            vcf_resonance: parameters[11] as f32,
+            vcf_envelope: parameters[12] as f32,
+            vcf_key_follow: parameters[14] as f32,
+            saw_on: u32::from(parameters[PARAM_DCO_SAW] >= 0.5),
+            pulse_on: u32::from(parameters[PARAM_DCO_PULSE] >= 0.5),
+            pwm_manual: u32::from(parameters[PARAM_PWM_MODE] >= 0.5),
+            dco_range: parameters[PARAM_DCO_RANGE] as u32,
+            vcf_envelope_negative: u32::from(matches!(
+                vcf_envelope_polarity(parameters[PARAM_VCF_ENV_POLARITY]),
+                VcfEnvelopePolarity::Negative
+            )),
+            vca_gate: u32::from(parameters[PARAM_VCA_MODE] >= 0.5),
+            velocity_sensitive: u32::from(parameters[47] < 0.5),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
+pub struct FinishFrame {
+    powered: u32,
+    hpf: f32,
+    output_vca: f32,
+    chorus_one: u32,
+    chorus_two: u32,
+    physical_volume: f32,
+}
+
+#[derive(Clone, Copy, Default)]
+pub struct PreparedSample {
+    pub common: CommonVoiceFrame,
+    pub finish: FinishFrame,
+}
+
+pub struct ParallelVoiceUnit {
+    voice: Voice,
+    epoch: u32,
+}
+
+impl Default for ParallelVoiceUnit {
+    fn default() -> Self {
+        Self {
+            voice: Voice::silent(0),
+            epoch: 0,
+        }
+    }
+}
+
+impl ParallelVoiceUnit {
+    pub fn synchronize_epoch(&mut self, epoch: u32, unit: usize) {
+        if self.epoch != epoch {
+            self.voice = Voice::silent(unit);
+            self.epoch = epoch;
+        }
+    }
+
+    pub fn apply_command(&mut self, command: VoiceCommand, unit: usize) {
+        if command.epoch != self.epoch || command.unit as usize != unit {
+            return;
+        }
+        match command.kind {
+            VoiceCommandKind::Reset => self.voice = Voice::silent(unit),
+            VoiceCommandKind::GateOn => {
+                gate_voice_on(&mut self.voice, command.note, command.velocity)
+            }
+            VoiceCommandKind::GateOff => gate_voice_off(&mut self.voice, command.sustain != 0),
+            VoiceCommandKind::ReleaseSustain => release_sustained_voice(&mut self.voice),
+        }
+    }
+
+    pub fn next(&mut self, sample_rate: f32, common: CommonVoiceFrame) -> f32 {
+        if common.powered == 0 {
+            return 0.0;
+        }
+        render_voice(
+            &mut self.voice,
+            common.parameters,
+            sample_rate,
+            common.portamento_switch_on != 0,
+            common.control,
+        )
+    }
 }
 
 pub struct Synth {
@@ -98,6 +256,10 @@ pub struct Synth {
     portamento_switch_on: bool,
     key_transpose: KeyTranspose,
     keyboard_notes: [Option<u8>; KEYBOARD_KEY_COUNT as usize],
+    capture_voice_commands: bool,
+    pending_voice_commands: [VoiceCommand; MAX_PENDING_VOICE_COMMANDS],
+    pending_voice_command_count: usize,
+    voice_epoch: u32,
 }
 
 impl Default for Synth {
@@ -122,6 +284,10 @@ impl Default for Synth {
             portamento_switch_on: true,
             key_transpose: KeyTranspose::new(),
             keyboard_notes: [None; KEYBOARD_KEY_COUNT as usize],
+            capture_voice_commands: false,
+            pending_voice_commands: [VoiceCommand::default(); MAX_PENDING_VOICE_COMMANDS],
+            pending_voice_command_count: 0,
+            voice_epoch: 0,
         };
         synth.parameters[PARAM_BENDER_DCO] = 1.0;
         synth.parameters[PARAM_BENDER_LFO] = 0.5;
@@ -150,7 +316,16 @@ impl Synth {
     }
 
     pub fn reset(&mut self) {
+        self.voice_epoch = self.voice_epoch.wrapping_add(1).max(1);
         self.voices = core::array::from_fn(Voice::silent);
+        for unit in 0..VOICE_COUNT {
+            self.push_voice_command(VoiceCommand {
+                unit: unit as u8,
+                kind: VoiceCommandKind::Reset,
+                epoch: self.voice_epoch,
+                ..VoiceCommand::default()
+            });
+        }
         self.allocator.reset();
         let actions = self
             .allocator
@@ -168,6 +343,40 @@ impl Synth {
         self.key_transpose = KeyTranspose::from_offset(self.parameters[PARAM_KEY_TRANSPOSE] as i8)
             .unwrap_or_default();
         self.keyboard_notes.fill(None);
+    }
+
+    pub fn capture_voice_commands(&mut self, enabled: bool) {
+        self.capture_voice_commands = enabled;
+        self.pending_voice_command_count = 0;
+    }
+
+    pub const fn voice_epoch(&self) -> u32 {
+        self.voice_epoch
+    }
+
+    pub const fn sample_rate(&self) -> f32 {
+        self.sample_rate
+    }
+
+    pub fn drain_voice_commands(&mut self, destination: &mut [VoiceCommand]) -> usize {
+        let count = self.pending_voice_command_count.min(destination.len());
+        destination[..count].copy_from_slice(&self.pending_voice_commands[..count]);
+        self.pending_voice_command_count = 0;
+        count
+    }
+
+    fn push_voice_command(&mut self, command: VoiceCommand) {
+        if !self.capture_voice_commands {
+            return;
+        }
+        let Some(slot) = self
+            .pending_voice_commands
+            .get_mut(self.pending_voice_command_count)
+        else {
+            return;
+        };
+        *slot = command;
+        self.pending_voice_command_count += 1;
     }
 
     pub fn parameters(&self) -> &[f64; NATIVE_PARAMETER_COUNT] {
@@ -343,10 +552,21 @@ impl Synth {
 
     pub fn set_hold(&mut self, enabled: bool) {
         if self.sustain && !enabled {
-            for voice in &mut self.voices {
+            let mut released = 0_u8;
+            for (unit, voice) in self.voices.iter_mut().enumerate() {
                 if voice.sustained {
-                    voice.sustained = false;
-                    voice.envelope.note_off();
+                    release_sustained_voice(voice);
+                    released |= 1 << unit;
+                }
+            }
+            for unit in 0..VOICE_COUNT {
+                if released & (1 << unit) != 0 {
+                    self.push_voice_command(VoiceCommand {
+                        unit: unit as u8,
+                        kind: VoiceCommandKind::ReleaseSustain,
+                        epoch: self.voice_epoch,
+                        ..VoiceCommand::default()
+                    });
                 }
             }
         }
@@ -422,8 +642,20 @@ impl Synth {
     /// those host policies outside this method makes circuit captures and
     /// regression renders comparable without an undocumented post-process.
     pub fn process_circuit_sample(&mut self) -> (f32, f32) {
+        let prepared = self.prepare_next_sample();
+        let mut voice_sum = 0.0;
+        for unit in 0..VOICE_COUNT {
+            voice_sum += self.render_prepared_voice(unit, prepared);
+        }
+        self.finish_prepared_sample(prepared.finish, voice_sum)
+    }
+
+    /// Advances the global modulation and control sources once for a host
+    /// sample. The returned frame is immutable and can be sent to all six
+    /// physical voice units without shared mutable state.
+    pub fn prepare_next_sample(&mut self) -> PreparedSample {
         if self.parameters[PARAM_POWER] < 0.5 {
-            return (0.0, 0.0);
+            return PreparedSample::default();
         }
         self.lfo.process(
             self.parameters[PARAM_LFO_RATE] as f32,
@@ -437,7 +669,6 @@ impl Synth {
         let noise = self.noise.process();
         let parameters = self.parameters;
         let portamento_switch_on = self.portamento_switch_on;
-        let sample_rate = self.sample_rate;
         let dco_bend = self
             .performance
             .bend
@@ -479,29 +710,59 @@ impl Synth {
             pwm_lfo_source: self.lfo.pwm_source(),
             noise,
         };
-        let mut voice_outputs = [0.0; VOICE_COUNT];
-        for (output, voice) in voice_outputs.iter_mut().zip(&mut self.voices) {
-            *output = render_voice(
-                voice,
-                &parameters,
-                sample_rate,
-                portamento_switch_on,
+        PreparedSample {
+            common: CommonVoiceFrame {
+                parameters: VoiceParameters::from_native(&parameters),
                 control,
-            );
+                portamento_switch_on: u32::from(portamento_switch_on),
+                powered: 1,
+            },
+            finish: FinishFrame {
+                powered: 1,
+                hpf: parameters[PARAM_HPF] as f32,
+                output_vca: parameters[PARAM_OUTPUT_VCA] as f32,
+                chorus_one: u32::from(parameters[27] >= 0.5),
+                chorus_two: u32::from(parameters[28] >= 0.5),
+                physical_volume: self.physical_volume as f32,
+            },
         }
-        let mut mono = self.summer.process(&voice_outputs, sample_rate);
+    }
+
+    pub fn render_prepared_voice(&mut self, unit: usize, prepared: PreparedSample) -> f32 {
+        if prepared.common.powered == 0 {
+            return 0.0;
+        }
+        let Some(voice) = self.voices.get_mut(unit) else {
+            return 0.0;
+        };
+        render_voice(
+            voice,
+            prepared.common.parameters,
+            self.sample_rate,
+            prepared.common.portamento_switch_on != 0,
+            prepared.common.control,
+        )
+    }
+
+    pub fn finish_prepared_sample(&mut self, finish: FinishFrame, voice_sum: f32) -> (f32, f32) {
+        if finish.powered == 0 {
+            return (0.0, 0.0);
+        }
+        let mut mono = self
+            .summer
+            .process_ideal_sum(module_voice_sum(&[voice_sum]), self.sample_rate);
         mono = self.output.process(
             mono,
-            sample_rate,
-            HpfPosition::from_native(parameters[PARAM_HPF]),
-            parameters[PARAM_OUTPUT_VCA] as f32,
+            self.sample_rate,
+            HpfPosition::from_native(f64::from(finish.hpf)),
+            finish.output_vca,
         );
         self.chorus.set_mode(ChorusMode::from_switches(
-            parameters[27] >= 0.5,
-            parameters[28] >= 0.5,
+            finish.chorus_one != 0,
+            finish.chorus_two != 0,
         ));
         let stereo = self.chorus.process(mono, self.sample_rate);
-        bender_board_volume(stereo, self.physical_volume as f32)
+        bender_board_volume(stereo, finish.physical_volume)
     }
 
     /// Advances only an idle instrument through the real program-selection
@@ -509,7 +770,8 @@ impl Synth {
     /// continuously biased DCO, IR3109 and BA662 state that exists before a
     /// key is scanned. A held/releasing performance is never fast-forwarded.
     fn settle_idle_program_change(&mut self) {
-        if !self.prepared
+        if self.capture_voice_commands
+            || !self.prepared
             || self
                 .voices
                 .iter()
@@ -539,31 +801,15 @@ impl Synth {
     }
 
     fn gate_voice_on(&mut self, slot: usize, note: u8, _velocity: u8) {
-        let dco = self.voices[slot].dco;
-        let mut envelope = self.voices[slot].envelope;
-        let vcf_control = self.voices[slot].vcf_control;
-        let analog_cell = self.voices[slot].analog_cell;
-        if !self.voices[slot].active {
-            envelope.reset();
-        }
-        envelope.note_on();
-        let portamento = self.voices[slot].portamento;
-        self.voices[slot] = Voice {
+        gate_voice_on(&mut self.voices[slot], note, 127);
+        self.push_voice_command(VoiceCommand {
+            unit: slot as u8,
+            kind: VoiceCommandKind::GateOn,
             note,
-            active: true,
-            gate: true,
-            sustained: false,
-            dco,
-            envelope,
-            vcf_control,
-            // The RF-106 keyboard and VCA are not velocity-sensitive. MIDI
-            // velocity only distinguishes Note On from velocity-zero Note Off.
-            velocity: 1.0,
-            // The physical 80017A is continuously biased; a new key does not
-            // reset its four capacitors or thermal-noise phase.
-            analog_cell,
-            portamento,
-        };
+            velocity: 127,
+            epoch: self.voice_epoch,
+            ..VoiceCommand::default()
+        });
     }
 
     fn gate_voice_off(&mut self, slot: usize) {
@@ -571,18 +817,67 @@ impl Synth {
         if !voice.active || !voice.gate {
             return;
         }
-        voice.gate = false;
-        if self.sustain {
-            voice.sustained = true;
-        } else {
-            voice.envelope.note_off();
-        }
+        gate_voice_off(voice, self.sustain);
+        self.push_voice_command(VoiceCommand {
+            unit: slot as u8,
+            kind: VoiceCommandKind::GateOff,
+            sustain: u8::from(self.sustain),
+            epoch: self.voice_epoch,
+            ..VoiceCommand::default()
+        });
+    }
+}
+
+fn gate_voice_on(voice: &mut Voice, note: u8, _velocity: u8) {
+    let dco = voice.dco;
+    let mut envelope = voice.envelope;
+    let vcf_control = voice.vcf_control;
+    let analog_cell = voice.analog_cell;
+    if !voice.active {
+        envelope.reset();
+    }
+    envelope.note_on();
+    let portamento = voice.portamento;
+    *voice = Voice {
+        note,
+        active: true,
+        gate: true,
+        sustained: false,
+        dco,
+        envelope,
+        vcf_control,
+        // The RF-106 keyboard and VCA are not velocity-sensitive. MIDI
+        // velocity only distinguishes Note On from velocity-zero Note Off.
+        velocity: 1.0,
+        // The physical 80017A is continuously biased; a new key does not
+        // reset its four capacitors or thermal-noise phase.
+        analog_cell,
+        portamento,
+    };
+}
+
+fn gate_voice_off(voice: &mut Voice, sustain: bool) {
+    if !voice.active || !voice.gate {
+        return;
+    }
+    voice.gate = false;
+    if sustain {
+        voice.sustained = true;
+    } else {
+        voice.envelope.note_off();
+    }
+}
+
+fn release_sustained_voice(voice: &mut Voice) {
+    if voice.sustained {
+        voice.sustained = false;
+        voice.envelope.note_off();
     }
 }
 
 fn render_voice(
     voice: &mut Voice,
-    parameters: &[f64; NATIVE_PARAMETER_COUNT],
+    parameters: VoiceParameters,
     sample_rate: f32,
     portamento_switch_on: bool,
     control: VoiceControlFrame,
@@ -592,16 +887,16 @@ fn render_voice(
     let base_pitch_8_8 = voice.portamento.process(
         sample_rate,
         voice.note,
-        parameters[PARAM_PORTAMENTO] as f32,
+        parameters.portamento,
         portamento_switch_on,
     );
     let envelope = if voice.active {
         let envelope = voice.envelope.process(
             sample_rate,
-            parameters[16] as f32,
-            parameters[17] as f32,
-            parameters[18] as f32,
-            parameters[19] as f32,
+            parameters.envelope_attack,
+            parameters.envelope_decay,
+            parameters.envelope_sustain,
+            parameters.envelope_release,
         );
         if voice.envelope.stage() == EnvelopeStage::Idle {
             voice.active = false;
@@ -611,26 +906,26 @@ fn render_voice(
         0.0
     };
 
-    let tuning = parameters[PARAM_TUNING] as f32;
+    let tuning = parameters.tuning;
     let base_pitch = f32::from(base_pitch_8_8) / 256.0;
     let lfo_pitch = f32::from(control.dco_lfo_8_8) / 256.0;
     let midi = base_pitch + tuning + control.dco_bend_semitones + lfo_pitch;
     // The real sub-oscillator source is controlled solely by its level DAC.
     let sources = SourceControl::from_native(
-        parameters[PARAM_DCO_SAW] >= 0.5,
-        parameters[PARAM_DCO_PULSE] >= 0.5,
-        parameters[PARAM_DCO_PWM_DEPTH] as f32,
-        parameters[PARAM_DCO_NOISE_LEVEL] as f32,
-        parameters[PARAM_DCO_SUB_LEVEL] as f32,
-        if parameters[PARAM_PWM_MODE] < 0.5 {
-            PwmMode::Lfo
-        } else {
+        parameters.saw_on != 0,
+        parameters.pulse_on != 0,
+        parameters.pwm_depth,
+        parameters.noise_level,
+        parameters.sub_level,
+        if parameters.pwm_manual != 0 {
             PwmMode::Manual
+        } else {
+            PwmMode::Lfo
         },
     );
     let pulse_width = sources.pulse_duty(control.pwm_lfo_source);
     let note_8_8 = libm::roundf(midi.clamp(0.0, 255.996) * 256.0) as u16;
-    let range = match parameters[PARAM_DCO_RANGE] as u8 {
+    let range = match parameters.dco_range as u8 {
         0 => DcoRange::SixteenFoot,
         2 => DcoRange::FourFoot,
         _ => DcoRange::EightFoot,
@@ -642,11 +937,15 @@ fn render_voice(
     let bend_offset = control.vcf_bend_word;
     let cutoff_word = voice.vcf_control.process(
         sample_rate,
-        parameters[10] as f32,
+        parameters.vcf_cutoff,
         voice.envelope.value(),
-        parameters[12] as f32,
-        vcf_envelope_polarity(parameters[PARAM_VCF_ENV_POLARITY]),
-        parameters[14] as f32,
+        parameters.vcf_envelope,
+        if parameters.vcf_envelope_negative != 0 {
+            VcfEnvelopePolarity::Negative
+        } else {
+            VcfEnvelopePolarity::Positive
+        },
+        parameters.vcf_key_follow,
         note_8_8,
         lfo_offset,
         bend_offset,
@@ -655,16 +954,16 @@ fn render_voice(
         oscillator,
         sample_rate,
         cutoff_word.dac,
-        resonance_dac(parameters[11] as f32),
+        resonance_dac(parameters.vcf_resonance),
     );
 
-    let velocity = if !voice.active || parameters[47] >= 0.5 {
+    let velocity = if !voice.active || parameters.velocity_sensitive == 0 {
         1.0
     } else {
         0.25 + voice.velocity * 0.75
     };
     let vca = vca_control(
-        if parameters[PARAM_VCA_MODE] >= 0.5 {
+        if parameters.vca_gate != 0 {
             VcaMode::Gate
         } else {
             VcaMode::Envelope

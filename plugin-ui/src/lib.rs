@@ -1,3 +1,6 @@
+#[cfg(any(target_arch = "wasm32", test))]
+mod cassette;
+
 #[cfg(target_arch = "wasm32")]
 use rf_106_contract::PUBLIC_KEY_TRANSPOSE_TRIGGER_INDEX;
 #[cfg(any(target_arch = "wasm32", test))]
@@ -14,6 +17,25 @@ const MODEL_ID: &str = "rf106";
 const MODEL_NAME: &str = "RF-106";
 
 #[cfg(any(target_arch = "wasm32", test))]
+const CASSETTE_BAYS: usize = 8;
+#[cfg(any(target_arch = "wasm32", test))]
+const CASSETTE_RESOURCES: [&str; CASSETTE_BAYS] = [
+    "cassette-1",
+    "cassette-2",
+    "cassette-3",
+    "cassette-4",
+    "cassette-5",
+    "cassette-6",
+    "cassette-7",
+    "cassette-8",
+];
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn cassette_bank_id(bay: usize) -> String {
+    format!("cassette.rf106.{}", bay + 1)
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Clone, Debug, Deserialize)]
 struct Sound {
     id: String,
@@ -22,12 +44,82 @@ struct Sound {
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
+#[derive(Clone, Debug, Deserialize)]
+struct Bank {
+    id: String,
+    name: String,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Collection {
+    id: String,
+    name: String,
+    programs: usize,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn rf106_collections(banks: &[Bank], sounds: &[Sound]) -> Vec<Collection> {
+    let mut ids = Vec::with_capacity(CASSETTE_BAYS + 2);
+    ids.push("factory.rf106".to_owned());
+    for bay in 0..CASSETTE_BAYS {
+        ids.push(cassette_bank_id(bay));
+    }
+    ids.push("user.rf106".to_owned());
+
+    ids.into_iter()
+        .filter_map(|id| {
+            let programs = sounds.iter().filter(|sound| sound.bank == id).count();
+            if programs == 0 {
+                return None;
+            }
+            let name = banks
+                .iter()
+                .find(|bank| bank.id == id)
+                .map(|bank| bank.name.clone())
+                .unwrap_or_else(|| {
+                    if id == "factory.rf106" {
+                        "Original factory".to_owned()
+                    } else if id == "user.rf106" {
+                        "Your programs".to_owned()
+                    } else {
+                        let bay = id.rsplit('.').next().unwrap_or("?");
+                        format!("Cassette {bay}")
+                    }
+                });
+            Some(Collection { id, name, programs })
+        })
+        .collect()
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn shown_collection(
+    requested: Option<&str>,
+    playing_sound_id: &str,
+    collections: &[Collection],
+    sounds: &[Sound],
+) -> Option<String> {
+    let known = |id: &str| collections.iter().any(|collection| collection.id == id);
+    if let Some(id) = requested.filter(|id| known(id)) {
+        return Some(id.to_owned());
+    }
+    if let Some(bank) = sounds
+        .iter()
+        .find(|sound| sound.id == playing_sound_id)
+        .map(|sound| sound.bank.as_str())
+        .filter(|bank| known(bank))
+    {
+        return Some(bank.to_owned());
+    }
+    collections.first().map(|collection| collection.id.clone())
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
 fn is_rf106_sound(sound: &Sound) -> bool {
-    matches!(
-        sound.bank.as_str(),
-        "factory.rf106" | "imported.rf106" | "user.rf106"
-    ) || sound.id.starts_with("factory.rf106.")
-        || sound.id.starts_with("imported.rf106.")
+    matches!(sound.bank.as_str(), "factory.rf106" | "user.rf106")
+        || sound.bank.starts_with("cassette.rf106.")
+        || sound.id.starts_with("factory.rf106.")
+        || sound.id.starts_with("cassette.rf106.")
         || sound.id.starts_with("custom.user.rf106-")
 }
 
@@ -59,14 +151,14 @@ fn patch_code(sound: &Sound) -> String {
             .unwrap_or(0);
         return format!("U{:02}", number % 100);
     }
-    if sound.id.starts_with("imported.") {
+    if sound.id.starts_with("cassette.") {
         let number = sound
             .id
             .rsplit('.')
             .next()
             .and_then(|value| value.parse::<u32>().ok())
             .unwrap_or(0);
-        return format!("I{:02}", (number + 1) % 100);
+        return format!("C{:02}", (number + 1) % 100);
     }
     if let Some(length) = patch_prefix_len(&sound.name) {
         return sound.name[..length].to_ascii_uppercase();
@@ -105,6 +197,53 @@ fn escape_html(value: &str) -> String {
         }
     }
     escaped
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn cassette_collection_name(bay: usize, banks: &[Bank]) -> String {
+    let bank_id = cassette_bank_id(bay);
+    banks
+        .iter()
+        .find(|bank| bank.id == bank_id)
+        .map(|bank| bank.name.trim())
+        .filter(|name| !name.is_empty())
+        .map(str::to_owned)
+        .unwrap_or_else(|| format!("Cassette {}", bay + 1))
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn cassette_modal(bay: usize, collection_name: &str, sounds: &[&Sound], disabled: &str) -> String {
+    let loaded = !sounds.is_empty();
+    let status = if loaded { "LOADED" } else { "EMPTY" };
+    let verb = if loaded { "REPLACE" } else { "LOAD" };
+    let program_count = sounds.len();
+    let collection_name = escape_html(collection_name);
+    let programs = if loaded {
+        sounds
+            .iter()
+            .map(|sound| {
+                format!(
+                    "<li><span>{}</span><strong>{}</strong></li>",
+                    escape_html(&patch_code(sound)),
+                    escape_html(clean_patch_name(sound))
+                )
+            })
+            .collect::<String>()
+    } else {
+        "<li class=\"empty\">Load a <code>.106</code> library or a <code>.syx</code> bank to populate this bay.</li>".to_owned()
+    };
+    let eject = if loaded {
+        format!(
+            "<button class=\"cassette-action secondary\" type=\"button\" data-action=\"clear-cassette\" data-bay=\"{bay}\"{disabled}>EJECT</button>"
+        )
+    } else {
+        String::new()
+    };
+    format!(
+        "<div class=\"cassette-modal-backdrop\" data-action=\"close-cassette\"><section class=\"cassette-modal\" data-action=\"modal-surface\" role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"cassette-modal-title\"><header><div><span class=\"section-kicker\">PROGRAM CASSETTE · BAY {}</span><h2 id=\"cassette-modal-title\">{collection_name}</h2></div><button class=\"cassette-modal-close\" type=\"button\" data-action=\"close-cassette\" aria-label=\"Close cassette details\" autofocus>×</button></header><div class=\"cassette-modal-summary\"><span class=\"cassette-modal-status{}\">{status}</span><dl><dt>COLLECTION</dt><dd>{collection_name}</dd><dt>PROGRAMS</dt><dd>{program_count} / 128</dd><dt>SUPPORTED</dt><dd>.106 · .SYX</dd></dl></div><div class=\"cassette-modal-programs\"><div><span class=\"section-kicker\">CONTENTS</span><strong>{program_count} PROGRAMS</strong></div><ol>{programs}</ol></div><footer><button class=\"cassette-action\" type=\"button\" data-action=\"choose-cassette\" data-bay=\"{bay}\"{disabled}>{verb}</button>{eject}</footer></section></div>",
+        bay + 1,
+        if loaded { " loaded" } else { "" },
+    )
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -228,6 +367,8 @@ mod browser {
     #[derive(Debug, Deserialize)]
     struct Instance {
         selected_sound_id: String,
+        #[serde(default)]
+        banks: Vec<Bank>,
         sounds: Vec<Sound>,
     }
 
@@ -320,6 +461,8 @@ mod browser {
         render_after_parameter_drag: bool,
         refresh_parameters_after_drag: bool,
         active_section: String,
+        selected_collection_id: Option<String>,
+        selected_cassette_bay: Option<usize>,
         search_query: String,
         bridge_error: String,
         transfer_notice: String,
@@ -353,6 +496,8 @@ mod browser {
                 render_after_parameter_drag: false,
                 refresh_parameters_after_drag: false,
                 active_section,
+                selected_collection_id: None,
+                selected_cassette_bay: None,
                 search_query: String::new(),
                 bridge_error: String::new(),
                 transfer_notice: String::new(),
@@ -414,12 +559,6 @@ mod browser {
 
         fn render_transfer_config(&self) -> String {
             let context = self.context.as_ref().expect("checked before rendering");
-            let imported = context
-                .instance
-                .sounds
-                .iter()
-                .filter(|sound| sound.bank == "imported.rf106")
-                .count();
             let saved = context
                 .instance
                 .sounds
@@ -427,13 +566,72 @@ mod browser {
                 .filter(|sound| sound.bank == "user.rf106")
                 .count();
             let disabled = if self.resource_busy { " disabled" } else { "" };
-            let clear = if imported > 0 {
-                format!(
-                    "<button class=\"transfer-button secondary\" type=\"button\" data-action=\"clear-program-bank\"{disabled}>REMOVE BANK</button>"
-                )
-            } else {
-                String::new()
-            };
+            let mut rack = String::from("<div class=\"cassette-rack\">");
+            let mut imported = 0;
+            let mut filled = 0;
+            for bay in 0..CASSETTE_BAYS {
+                let bank = cassette_bank_id(bay);
+                let bay_sounds = context
+                    .instance
+                    .sounds
+                    .iter()
+                    .filter(|sound| sound.bank == bank)
+                    .collect::<Vec<_>>();
+                let programs = bay_sounds.len();
+                let collection_name = cassette_collection_name(bay, &context.instance.banks);
+                imported += programs;
+                filled += usize::from(programs > 0);
+                let face = cassette::Face {
+                    bay,
+                    programs,
+                    empty: programs == 0,
+                    label: if programs > 0 {
+                        collection_name.clone()
+                    } else {
+                        "AVAILABLE BAY".to_owned()
+                    },
+                };
+                let clear = if programs > 0 {
+                    format!(
+                        "<button class=\"cassette-action secondary\" type=\"button\" data-action=\"clear-cassette\" data-bay=\"{bay}\"{disabled}>EJECT</button>"
+                    )
+                } else {
+                    String::new()
+                };
+                let verb = if programs > 0 { "REPLACE" } else { "LOAD" };
+                let contents =
+                    if let (Some(first), Some(last)) = (bay_sounds.first(), bay_sounds.last()) {
+                        if programs == 1 {
+                            escape_html(clean_patch_name(first))
+                        } else {
+                            format!(
+                                "{} ··· {}",
+                                escape_html(clean_patch_name(first)),
+                                escape_html(clean_patch_name(last))
+                            )
+                        }
+                    } else {
+                        "Ready for .106 or .syx".to_owned()
+                    };
+                rack.push_str(&format!(
+                    "<article class=\"cassette-bay{}\"><button class=\"cassette-media\" type=\"button\" data-action=\"open-cassette\" data-bay=\"{bay}\" aria-label=\"View cassette bay {} details\">{}</button><div class=\"cassette-bay-meta\"><strong>BAY {}</strong><span>{}</span></div><strong class=\"cassette-collection-name\">{}</strong><small class=\"cassette-collection-contents\">{contents}</small><div class=\"cassette-actions\"><button class=\"cassette-action secondary details\" type=\"button\" data-action=\"open-cassette\" data-bay=\"{bay}\">DETAILS</button><button class=\"cassette-action\" type=\"button\" data-action=\"choose-cassette\" data-bay=\"{bay}\"{disabled}>{verb}</button>{clear}</div></article>",
+                    if programs == 0 { " empty" } else { "" },
+                    bay + 1,
+                    cassette::svg(&face, &format!("bay-{}", bay + 1)),
+                    bay + 1,
+                    if programs == 1 {
+                        "1 PROGRAM".to_owned()
+                    } else {
+                        format!("{programs} PROGRAMS")
+                    },
+                    escape_html(if programs > 0 {
+                        &collection_name
+                    } else {
+                        "No collection loaded"
+                    }),
+                ));
+            }
+            rack.push_str("</div>");
             let notice = if self.transfer_notice.is_empty() {
                 String::new()
             } else {
@@ -442,9 +640,28 @@ mod browser {
                     escape_html(&self.transfer_notice)
                 )
             };
+            let modal = self
+                .selected_cassette_bay
+                .filter(|bay| *bay < CASSETTE_BAYS)
+                .map(|bay| {
+                    let bank = cassette_bank_id(bay);
+                    let sounds = context
+                        .instance
+                        .sounds
+                        .iter()
+                        .filter(|sound| sound.bank == bank)
+                        .collect::<Vec<_>>();
+                    cassette_modal(
+                        bay,
+                        &cassette_collection_name(bay, &context.instance.banks),
+                        &sounds,
+                        disabled,
+                    )
+                })
+                .unwrap_or_default();
             format!(
-                "<main class=\"transfer-config\"><header class=\"transfer-header\"><span>RF</span><strong>106</strong><small>PROGRAM TRANSFER</small></header><section class=\"transfer-card\"><div><span class=\"section-kicker\">ORIGINAL FORMAT</span><h1>JUNO-106 SysEx</h1><p>Install a <code>.syx</code> file containing complete 24-byte APR tone messages. Every valid tone joins the Program library without changing the 128 original factory programs.</p></div><dl><dt>IMPORTED</dt><dd>{imported}</dd><dt>YOUR PROGRAMS</dt><dd>{saved}</dd><dt>TONE DATA</dt><dd>18 × 7-bit</dd></dl><div class=\"transfer-actions\"><button class=\"transfer-button\" type=\"button\" data-action=\"choose-program-bank\"{disabled}>INSTALL SYSEX BANK</button>{clear}</div>{notice}</section><section class=\"transfer-card export-card\"><span class=\"section-kicker\">AUTOMATIC EXPORTS</span><h2>Ready for hardware and librarians</h2><p>Every Program save writes a single manual-buffer dump and rebuilds both banks under RackForge's RF-106 data folder.</p><code>programs/&lt;program&gt;.syx</code><code>exports/rf106-programs.syx</code><code>exports/rf106-factory.syx</code></section></main>"
-            )
+                "<main class=\"transfer-config\"><header class=\"transfer-header\"><span>RF</span><strong>106</strong><small>PROGRAM TRANSFER</small></header><section class=\"transfer-card cassette-section\"><div class=\"transfer-intro\"><span class=\"section-kicker\">CASSETTE BACKUP LIBRARY</span><h1>Eight program bays</h1><p>The original instrument used ordinary cassette tape for memory backups. Each RF-106 cassette accepts a Juno-106 Librarian <code>.106</code> library or a <code>.syx</code> file with up to 128 complete APR tones, then publishes it as an independent Program bank.</p></div><dl><dt>CASSETTES</dt><dd>{filled}/8</dd><dt>IMPORTED</dt><dd>{imported}</dd><dt>YOUR PROGRAMS</dt><dd>{saved}</dd><dt>TONE DATA</dt><dd>18 × 7-bit</dd></dl>{rack}{notice}</section><section class=\"transfer-card export-card\"><span class=\"section-kicker\">AUTOMATIC EXPORTS</span><h2>Ready for hardware and librarians</h2><p>Every Program save writes a single manual-buffer dump and rebuilds both banks under RackForge's RF-106 data folder.</p><code>programs/&lt;program&gt;.syx</code><code>exports/rf106-programs.syx</code><code>exports/rf106-factory.syx</code></section></main>"
+            ) + &modal
         }
 
         fn sync_program_group_routing(&self) {
@@ -778,12 +995,46 @@ mod browser {
                 .pending_sound_id
                 .as_deref()
                 .unwrap_or(&context.instance.selected_sound_id);
+            let collections = rf106_collections(&context.instance.banks, &context.instance.sounds);
+            let shown = shown_collection(
+                self.selected_collection_id.as_deref(),
+                displayed_sound_id,
+                &collections,
+                &context.instance.sounds,
+            );
+            let playing_bank = context
+                .instance
+                .sounds
+                .iter()
+                .find(|sound| sound.id == displayed_sound_id)
+                .map(|sound| sound.bank.as_str());
+            let mut collection_list = String::new();
+            for collection in &collections {
+                let active = shown.as_deref() == Some(collection.id.as_str());
+                let playing = playing_bank == Some(collection.id.as_str());
+                collection_list.push_str(&format!(
+                    "<button class=\"collection-button{}\" type=\"button\" data-action=\"collection\" data-bank-id=\"{}\" aria-pressed=\"{active}\"><span><strong>{}</strong>{}</span><small>{}</small></button>",
+                    if playing { " playing" } else { "" },
+                    escape_html(&collection.id),
+                    escape_html(&collection.name),
+                    if playing {
+                        "<em>PLAYING</em>"
+                    } else {
+                        ""
+                    },
+                    collection.programs,
+                ));
+            }
+            let shown_collection = shown
+                .as_deref()
+                .and_then(|id| collections.iter().find(|collection| collection.id == id));
             let mut patches = String::new();
             for sound in context
                 .instance
                 .sounds
                 .iter()
                 .filter(|sound| is_rf106_sound(sound))
+                .filter(|sound| shown.as_deref() == Some(sound.bank.as_str()))
                 .filter(|sound| {
                     query.is_empty()
                         || sound.name.to_ascii_lowercase().contains(&query)
@@ -811,13 +1062,19 @@ mod browser {
                 ));
             }
             if patches.is_empty() {
-                patches.push_str("<p class=\"empty-state\">No patches match this search.</p>");
+                patches.push_str(
+                    "<p class=\"empty-state\">No programs match this search in this collection.</p>",
+                );
             }
+            let collection_name = shown_collection
+                .map(|collection| collection.name.as_str())
+                .unwrap_or("Programs");
+            let collection_count = shown_collection.map_or(0, |collection| collection.programs);
             let mut html = format!(
-                "<section class=\"patch-library\"><div class=\"library-toolbar\"><div><span class=\"section-kicker\">{} MEMORY</span><h2>Program library</h2><p>Original factory tones, imported SysEx and your saved Programs.</p></div><input class=\"patch-search\" type=\"search\" data-action=\"search\" placeholder=\"Search {} programs\" value=\"{}\" aria-label=\"Search programs\"></div><div class=\"patch-grid\">{patches}</div></section>",
+                "<section class=\"patch-library\"><div class=\"library-toolbar\"><div><span class=\"section-kicker\">{} MEMORY</span><h2>Program library</h2><p>Choose a collection, then load one of its programs.</p></div><input class=\"patch-search\" type=\"search\" data-action=\"search\" placeholder=\"Search this collection\" value=\"{}\" aria-label=\"Search programs in selected collection\"></div><div class=\"library-browser\"><aside class=\"collection-sidebar\" aria-label=\"Program collections\"><span class=\"collection-sidebar-title\">COLLECTIONS</span><div class=\"collection-list\">{collection_list}</div></aside><div class=\"collection-programs\"><header class=\"collection-heading\"><div><span class=\"section-kicker\">SELECTED COLLECTION</span><h3>{}</h3></div><strong>{collection_count}<small> PROGRAMS</small></strong></header><div class=\"patch-grid\">{patches}</div></div></div></section>",
                 MODEL_NAME,
-                MODEL_NAME,
-                escape_html(&self.search_query)
+                escape_html(&self.search_query),
+                escape_html(collection_name),
             );
             if !self.bridge_error.is_empty() {
                 html.push_str(&format!(
@@ -2090,17 +2347,28 @@ mod browser {
         );
     }
 
-    fn choose_program_bank(app: &AppHandle) {
+    fn cassette_bay(element: &Element) -> Option<usize> {
+        element
+            .get_attribute("data-bay")?
+            .parse::<usize>()
+            .ok()
+            .filter(|bay| *bay < CASSETTE_BAYS)
+    }
+
+    fn choose_cassette(app: &AppHandle, bay: usize) {
+        let Some(resource) = CASSETTE_RESOURCES.get(bay).copied() else {
+            return;
+        };
         {
             let mut state = app.borrow_mut();
             state.resource_busy = true;
-            state.transfer_notice = "Waiting for the SysEx file...".to_owned();
+            state.transfer_notice = format!("Waiting for cassette {}...", bay + 1);
         }
         app.borrow().render();
         request(
             app,
             "plugin.select_resource",
-            serde_json::json!({"resource_id": "program-bank", "extensions": ["syx"]}),
+            serde_json::json!({"resource_id": resource, "extensions": ["106", "syx"]}),
             move |app, result| {
                 let grant = result.ok().and_then(|value| {
                     Reflect::get(&value, &JsValue::from_str("grant_id"))
@@ -2110,7 +2378,7 @@ mod browser {
                 let Some(grant) = grant else {
                     let mut state = app.borrow_mut();
                     state.resource_busy = false;
-                    state.transfer_notice = "No SysEx file was selected.".to_owned();
+                    state.transfer_notice = "No .106 or SysEx file was selected.".to_owned();
                     drop(state);
                     app.borrow().render();
                     return;
@@ -2118,14 +2386,16 @@ mod browser {
                 request(
                     app,
                     "plugin.install_resource",
-                    serde_json::json!({"target_resource_id": "program-bank", "grant_id": grant}),
+                    serde_json::json!({"target_resource_id": resource, "grant_id": grant}),
                     move |app, result| {
                         let mut state = app.borrow_mut();
                         state.resource_busy = false;
                         state.transfer_notice = match result {
                             Ok(_) => {
-                                "SysEx bank installed. Its tones are now in the Program library."
-                                    .to_owned()
+                                format!(
+                                    "Cassette {} loaded. Its tones are now in the Program library.",
+                                    bay + 1
+                                )
                             }
                             Err(error) => error,
                         };
@@ -2137,22 +2407,25 @@ mod browser {
         );
     }
 
-    fn clear_program_bank(app: &AppHandle) {
+    fn clear_cassette(app: &AppHandle, bay: usize) {
+        let Some(resource) = CASSETTE_RESOURCES.get(bay).copied() else {
+            return;
+        };
         {
             let mut state = app.borrow_mut();
             state.resource_busy = true;
-            state.transfer_notice = "Removing the imported bank...".to_owned();
+            state.transfer_notice = format!("Ejecting cassette {}...", bay + 1);
         }
         app.borrow().render();
         request(
             app,
             "plugin.clear_resource",
-            serde_json::json!({"target_resource_id": "program-bank"}),
+            serde_json::json!({"target_resource_id": resource}),
             move |app, result| {
                 let mut state = app.borrow_mut();
                 state.resource_busy = false;
                 state.transfer_notice = match result {
-                    Ok(_) => "Imported bank removed.".to_owned(),
+                    Ok(_) => format!("Cassette {} ejected.", bay + 1),
                     Err(error) => error,
                 };
                 drop(state);
@@ -2471,8 +2744,27 @@ mod browser {
                 return;
             };
             match element.get_attribute("data-action").as_deref() {
-                Some("choose-program-bank") => choose_program_bank(&click_app),
-                Some("clear-program-bank") => clear_program_bank(&click_app),
+                Some("open-cassette") => {
+                    if let Some(bay) = cassette_bay(&element) {
+                        click_app.borrow_mut().selected_cassette_bay = Some(bay);
+                        click_app.borrow().render();
+                    }
+                }
+                Some("close-cassette") => {
+                    click_app.borrow_mut().selected_cassette_bay = None;
+                    click_app.borrow().render();
+                }
+                Some("modal-surface") => {}
+                Some("choose-cassette") => {
+                    if let Some(bay) = cassette_bay(&element) {
+                        choose_cassette(&click_app, bay);
+                    }
+                }
+                Some("clear-cassette") => {
+                    if let Some(bay) = cassette_bay(&element) {
+                        clear_cassette(&click_app, bay);
+                    }
+                }
                 Some("section") => {
                     if let Some(section) = element.get_attribute("data-section")
                         && matches!(
@@ -2496,6 +2788,19 @@ mod browser {
                         click_app.borrow().render();
                         if needs_refresh {
                             refresh_parameters(&click_app);
+                        }
+                    }
+                }
+                Some("collection") => {
+                    if let Some(bank_id) = element.get_attribute("data-bank-id") {
+                        let valid = click_app.borrow().context.as_ref().is_some_and(|context| {
+                            rf106_collections(&context.instance.banks, &context.instance.sounds)
+                                .iter()
+                                .any(|collection| collection.id == bank_id)
+                        });
+                        if valid {
+                            click_app.borrow_mut().selected_collection_id = Some(bank_id);
+                            click_app.borrow().render();
                         }
                     }
                 }
@@ -3027,10 +3332,65 @@ mod tests {
         assert_eq!(patch_code(&named), "A11");
         assert_eq!(clean_patch_name(&named), "Brass");
 
+        let cassette = sound("cassette.rf106.4.001", "Imported A12", "cassette.rf106.4");
+        assert!(is_rf106_sound(&cassette));
+        assert_eq!(CASSETTE_BAYS, 8);
+        assert_eq!(CASSETTE_RESOURCES[3], "cassette-4");
+        assert_eq!(cassette_bank_id(3), "cassette.rf106.4");
+        assert_eq!(patch_code(&cassette), "C02");
+
         let numeric = sound("factory.other.127", "No Prefix", "factory.other");
         assert!(!is_rf106_sound(&numeric));
         assert_eq!(patch_code(&numeric), "B88");
         assert_eq!(clean_patch_name(&numeric), "No Prefix");
+    }
+
+    #[test]
+    fn collections_keep_factory_first_and_show_only_the_selected_bank() {
+        let banks = vec![
+            Bank {
+                id: "cassette.rf106.3".to_owned(),
+                name: "Best of Orion".to_owned(),
+            },
+            Bank {
+                id: "factory.rf106".to_owned(),
+                name: "Original factory".to_owned(),
+            },
+            Bank {
+                id: "user.rf106".to_owned(),
+                name: "Your programs".to_owned(),
+            },
+        ];
+        let sounds = vec![
+            sound("cassette.rf106.3.000", "Bass", "cassette.rf106.3"),
+            sound("factory.rf106.000", "Brass", "factory.rf106"),
+            sound("factory.rf106.001", "Strings", "factory.rf106"),
+            sound("custom.user.rf106-001", "Mine", "user.rf106"),
+        ];
+        let collections = rf106_collections(&banks, &sounds);
+        assert_eq!(
+            collections
+                .iter()
+                .map(|collection| collection.id.as_str())
+                .collect::<Vec<_>>(),
+            ["factory.rf106", "cassette.rf106.3", "user.rf106"]
+        );
+        assert_eq!(collections[0].programs, 2);
+        assert_eq!(collections[1].name, "Best of Orion");
+        assert_eq!(
+            shown_collection(None, "cassette.rf106.3.000", &collections, &sounds).as_deref(),
+            Some("cassette.rf106.3")
+        );
+        assert_eq!(
+            shown_collection(
+                Some("factory.rf106"),
+                "cassette.rf106.3.000",
+                &collections,
+                &sounds,
+            )
+            .as_deref(),
+            Some("factory.rf106")
+        );
     }
 
     #[test]
@@ -3039,6 +3399,29 @@ mod tests {
             escape_html("<RF & \"RF\">"),
             "&lt;RF &amp; &quot;RF&quot;&gt;"
         );
+    }
+
+    #[test]
+    fn cassette_details_use_the_collection_name_and_list_its_programs() {
+        let banks = vec![Bank {
+            id: "cassette.rf106.3".to_owned(),
+            name: "Best <Orion>".to_owned(),
+        }];
+        let first = sound("cassette.rf106.3.000", "A-11 Fat Bass", "cassette.rf106.3");
+        let last = sound(
+            "cassette.rf106.3.001",
+            "B-42 Vince SH-101",
+            "cassette.rf106.3",
+        );
+        let sounds = vec![&first, &last];
+
+        assert_eq!(cassette_collection_name(2, &banks), "Best <Orion>");
+        let modal = cassette_modal(2, &cassette_collection_name(2, &banks), &sounds, "");
+        assert!(modal.contains("Best &lt;Orion&gt;"));
+        assert!(modal.contains("2 / 128"));
+        assert!(modal.contains("Fat Bass"));
+        assert!(modal.contains("Vince SH-101"));
+        assert!(modal.contains("data-action=\"clear-cassette\""));
     }
 
     #[test]

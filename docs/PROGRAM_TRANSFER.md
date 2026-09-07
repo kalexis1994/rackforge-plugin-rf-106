@@ -16,17 +16,28 @@ This choice gives each format one job:
 
 ## CONFIG workflow
 
-The plugin declares an optional `program-bank` file resource. In CONFIG,
-**INSTALL SYSEX BANK** asks RackForge for a `.syx` file. The surface sees only a
-host grant, never the source path. RackForge delivers the bytes to a replacement
-plugin instance, which accepts complete Roland APR messages (`0x30` program or
-`0x31` manual) and publishes their tones under **Imported SysEx**. Factory
-programs stay available. Imported tones are editable copies, so saving one
-creates a normal host-owned Program under **Your programs**.
+The plugin declares eight optional file resources, `cassette-1` through
+`cassette-8`. CONFIG draws them as compact cassettes because the original
+JUNO-106 used ordinary tape for full memory backups. The bays are an RF-106
+library extension; the hardware did not have cartridge slots.
 
-SysEx APR has no name field. An imported tone is therefore labelled from its
-hardware patch number (`Imported A11` through `Imported B88`). Its RackForge
-name can be changed when the tone is saved.
+**LOAD** asks RackForge for one `.106` or `.syx` file for that bay. The surface
+sees only a host grant, never the source path. RackForge delivers the bytes to a
+replacement plugin instance. A Juno-106 Librarian `.106` library contributes up
+to 128 named tones while retaining their exact eighteen-byte program data. A
+SysEx file contributes up to 128 complete Roland APR messages (`0x30` program
+or `0x31` manual). Each filled cassette becomes its own Program bank and can be
+replaced or ejected without changing the other seven. Factory programs stay
+available. Cassette tones are editable copies, so saving one creates a normal
+host-owned Program under **Your programs**.
+
+Juno-106 Librarian names are preserved. SysEx APR has no name field, so those
+tones are labelled from their hardware patch number (`Imported A11` through
+`Imported B88`). A name can be changed when the tone is saved.
+
+Eight full cassettes can expose up to 1,024 imported tones. Their catalog IDs
+are `cassette.rf106.<bay>.<program>`, so every program retains its bay identity
+even when earlier bays are empty.
 
 Every Program save writes these derived artifacts under the plugin's RackForge
 data namespace:

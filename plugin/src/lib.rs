@@ -1,6 +1,9 @@
 extern crate alloc;
 
+use core::{mem, slice};
+
 mod catalog;
+mod j106_library;
 mod program;
 mod programs;
 
@@ -9,10 +12,10 @@ use program::{
     PROGRAM_EDIT_SCHEMA_VERSION, PROGRAM_SCHEMA_VERSION, PreparedProgram, ProgramDocument,
     ProgramEditRequest, ProgramFieldEditRequest,
 };
-use programs::{CustomPrograms, Program, imported_index};
+use programs::{CASSETTE_BAYS, CustomPrograms, Program, cassette_bay, cassette_program};
 use rackforge_plugin_sdk::{
-    MidiEvent, PROGRAM_EDIT_BASIC, PROGRAM_EDIT_DECLARATIVE, PROGRAM_EDIT_PREVIEW, ParameterEvent,
-    Processor, export_processor,
+    BlockContext, MidiEvent, PROGRAM_EDIT_BASIC, PROGRAM_EDIT_DECLARATIVE, PROGRAM_EDIT_PREVIEW,
+    ParameterEvent, PlanWriter, Processor, UnitContext, UnitMix, export_parallel_processor,
 };
 use rf_106_contract::{
     DEFAULT_FACTORY_PROGRAM, NATIVE_PARAMETER_COUNT, PUBLIC_BENDER_POSITION_INDEX,
@@ -22,8 +25,10 @@ use rf_106_contract::{
     public_parameter_value_is_valid, public_to_native_parameter,
     sysex::{APR_BYTES, Tone},
 };
-use rf_106_control::{MidiFunction, MidiReceiveAction, MidiReceiver};
-use rf_106_dsp::Synth;
+use rf_106_control::{MidiFunction, MidiReceiveAction, MidiReceiver, VOICE_COUNT};
+use rf_106_dsp::{
+    CommonVoiceFrame, FinishFrame, ParallelVoiceUnit, Synth, VoiceCommand, VoiceCommandKind,
+};
 use serde::Serialize;
 
 const STATE_MAGIC: [u8; 4] = *b"R106";
@@ -36,8 +41,98 @@ const NATIVE_HOST_MASTER: u32 = 44;
 const HOST_GAIN_AT_UNITY: f32 = 0.32;
 const HOST_LIMIT_THRESHOLD: f32 = 0.90;
 const HOST_LIMIT_CEILING: f32 = 0.98;
-const RESOURCE_PROGRAM_BANK: &str = "program-bank";
 const MAX_RESOURCE_BYTES: usize = 1_048_576;
+const MAX_FRAMES: usize = 4096;
+const MAX_OUTPUT_CHANNELS: usize = 2;
+const MAX_MIDI_EVENTS: usize = 1024;
+const MAX_PARAMETER_EVENTS: usize = 1024;
+const MAX_COMMANDS_PER_UNIT: usize = MAX_MIDI_EVENTS + MAX_PARAMETER_EVENTS + VOICE_COUNT;
+const PARALLEL_WIRE_VERSION: u32 = 1;
+const SHARED_MAGIC: u32 = u32::from_le_bytes(*b"R6SH");
+const DISPATCH_MAGIC: u32 = u32::from_le_bytes(*b"R6DU");
+
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
+struct SharedHeader {
+    magic: u32,
+    version: u32,
+    frames: u32,
+    sample_rate_bits: u32,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
+struct DispatchHeader {
+    magic: u32,
+    version: u32,
+    frames: u32,
+    initial_epoch: u32,
+    command_count: u32,
+    reserved: u32,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
+struct WireVoiceCommand {
+    frame: u32,
+    epoch: u32,
+    kind: u8,
+    note: u8,
+    velocity: u8,
+    sustain: u8,
+    unit: u8,
+    reserved: [u8; 3],
+}
+
+impl WireVoiceCommand {
+    fn from_command(frame: u32, command: VoiceCommand) -> Self {
+        Self {
+            frame,
+            epoch: command.epoch,
+            kind: command.kind as u8,
+            note: command.note,
+            velocity: command.velocity,
+            sustain: command.sustain,
+            unit: command.unit,
+            reserved: [0; 3],
+        }
+    }
+
+    fn decode(self) -> Option<VoiceCommand> {
+        let kind = match self.kind {
+            0 => VoiceCommandKind::Reset,
+            1 => VoiceCommandKind::GateOn,
+            2 => VoiceCommandKind::GateOff,
+            3 => VoiceCommandKind::ReleaseSustain,
+            _ => return None,
+        };
+        Some(VoiceCommand {
+            unit: self.unit,
+            kind,
+            note: self.note,
+            velocity: self.velocity,
+            sustain: self.sustain,
+            reserved: [0; 3],
+            epoch: self.epoch,
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct EndFrame {
+    finish: FinishFrame,
+    host_master: f32,
+}
+
+const SHARED_HEADER_BYTES: usize = mem::size_of::<SharedHeader>();
+const COMMON_FRAME_BYTES: usize = mem::size_of::<CommonVoiceFrame>();
+const SHARED_CAPACITY: usize = SHARED_HEADER_BYTES + MAX_FRAMES * COMMON_FRAME_BYTES;
+const DISPATCH_HEADER_BYTES: usize = mem::size_of::<DispatchHeader>();
+const COMMAND_BYTES: usize = MAX_COMMANDS_PER_UNIT * mem::size_of::<WireVoiceCommand>();
+const DISPATCH_STRIDE: usize = DISPATCH_HEADER_BYTES + COMMAND_BYTES;
+
+const _: () = assert!(SHARED_CAPACITY.is_multiple_of(8));
+const _: () = assert!(DISPATCH_STRIDE.is_multiple_of(8));
 
 struct Rf106 {
     synth: Synth,
@@ -45,9 +140,14 @@ struct Rf106 {
     selected_factory_program: u32,
     key_transpose_armed: bool,
     custom: CustomPrograms,
-    imported: Vec<Program>,
+    cassettes: [Vec<Program>; CASSETTE_BAYS],
+    cassette_names: [Option<String>; CASSETTE_BAYS],
     incoming: Vec<u8>,
-    receiving_program_bank: bool,
+    receiving_cassette: Option<usize>,
+    end_frames: Vec<EndFrame>,
+    commands: [Vec<WireVoiceCommand>; VOICE_COUNT],
+    dispatch_scratch: Vec<u8>,
+    command_overflow: bool,
 }
 
 impl Default for Rf106 {
@@ -58,21 +158,64 @@ impl Default for Rf106 {
             selected_factory_program: DEFAULT_FACTORY_PROGRAM,
             key_transpose_armed: false,
             custom: CustomPrograms::default(),
-            imported: Vec::new(),
+            cassettes: core::array::from_fn(|_| Vec::new()),
+            cassette_names: core::array::from_fn(|_| None),
             incoming: Vec::new(),
-            receiving_program_bank: false,
+            receiving_cassette: None,
+            end_frames: alloc::vec![EndFrame::default(); MAX_FRAMES],
+            commands: core::array::from_fn(|_| Vec::with_capacity(MAX_COMMANDS_PER_UNIT)),
+            dispatch_scratch: alloc::vec![0; DISPATCH_STRIDE],
+            command_overflow: false,
         }
     }
 }
 
 impl Rf106 {
+    fn capture_voice_commands(&mut self, frame: u32) {
+        let mut pending = [VoiceCommand::default(); VOICE_COUNT * 8];
+        let count = self.synth.drain_voice_commands(&mut pending);
+        for command in pending[..count].iter().copied() {
+            let unit = command.unit as usize;
+            let Some(destination) = self.commands.get_mut(unit) else {
+                self.command_overflow = true;
+                continue;
+            };
+            if destination.len() >= MAX_COMMANDS_PER_UNIT {
+                self.command_overflow = true;
+                continue;
+            }
+            destination.push(WireVoiceCommand::from_command(frame, command));
+        }
+    }
+
+    fn write_dispatch(&mut self, unit: usize, frames: usize, initial_epoch: u32) -> usize {
+        self.dispatch_scratch.fill(0);
+        let command_count = self.commands[unit].len();
+        let header = DispatchHeader {
+            magic: DISPATCH_MAGIC,
+            version: PARALLEL_WIRE_VERSION,
+            frames: frames as u32,
+            initial_epoch,
+            command_count: command_count as u32,
+            reserved: 0,
+        };
+        let mut offset = 0;
+        write_value(&mut self.dispatch_scratch, &mut offset, &header);
+        write_values(
+            &mut self.dispatch_scratch,
+            &mut offset,
+            &self.commands[unit],
+        );
+        offset
+    }
+
     fn tone_for_catalog_id(&self, id: &str) -> Option<(Tone, Option<String>, String)> {
         if let Some(document_id) = CustomPrograms::document_id(id) {
             let program = self.custom.find(document_id)?;
             return Some((program.tone, Some(program.id.clone()), program.name.clone()));
         }
-        if let Some(index) = imported_index(id) {
-            let program = self.imported.get(index)?;
+        if let Some((bay, index)) = cassette_program(id) {
+            let program = self.cassettes.get(bay)?.get(index)?;
             return Some((program.tone, None, program.name.clone()));
         }
         let index = parse_preset_id(id)?;
@@ -91,7 +234,37 @@ impl Rf106 {
         self.synth.load_tone(&tone)
     }
 
-    fn install_sysex_bank(&mut self) -> bool {
+    fn install_cassette(&mut self, bay: usize) -> bool {
+        if self.incoming.starts_with(b"!j106\\") {
+            return self.install_librarian_cassette(bay);
+        }
+        self.install_sysex_cassette(bay)
+    }
+
+    fn install_librarian_cassette(&mut self, bay: usize) -> bool {
+        let Some(library) =
+            j106_library::parse(&self.incoming, programs::MAX_PROGRAMS_PER_CASSETTE)
+        else {
+            return false;
+        };
+        if library.programs.is_empty() {
+            return false;
+        }
+        self.cassette_names[bay] = (!library.name.trim().is_empty()).then_some(library.name);
+        self.cassettes[bay] = library
+            .programs
+            .into_iter()
+            .enumerate()
+            .map(|(index, program)| Program {
+                id: format!("cassette-{}-{index:03}", bay + 1),
+                name: program.name,
+                tone: program.tone,
+            })
+            .collect();
+        true
+    }
+
+    fn install_sysex_cassette(&mut self, bay: usize) -> bool {
         let mut programs = Vec::new();
         let mut offset = 0;
         while offset < self.incoming.len() {
@@ -106,11 +279,11 @@ impl Rf106 {
                 break;
             };
             if let Some(apr) = Tone::decode_apr(message) {
-                if programs.len() >= programs::MAX_IMPORTED_PROGRAMS {
+                if programs.len() >= programs::MAX_PROGRAMS_PER_CASSETTE {
                     return false;
                 }
                 programs.push(Program {
-                    id: format!("imported-{:03}", programs.len()),
+                    id: format!("cassette-{}-{:03}", bay + 1, programs.len()),
                     name: format!("Imported {}", hardware_patch_code(apr.patch)),
                     tone: apr.tone,
                 });
@@ -122,7 +295,8 @@ impl Rf106 {
         if programs.is_empty() {
             return false;
         }
-        self.imported = programs;
+        self.cassette_names[bay] = None;
+        self.cassettes[bay] = programs;
         true
     }
 }
@@ -278,21 +452,22 @@ impl Processor for Rf106 {
     }
 
     fn begin_resource(&mut self, id: &str, total_bytes: u64) -> bool {
-        if id != RESOURCE_PROGRAM_BANK || total_bytes > MAX_RESOURCE_BYTES as u64 {
+        let Some(bay) = cassette_bay(id).filter(|_| total_bytes <= MAX_RESOURCE_BYTES as u64)
+        else {
             return false;
-        }
+        };
         self.incoming.clear();
         self.incoming.reserve(total_bytes as usize);
-        self.receiving_program_bank = true;
+        self.receiving_cassette = Some(bay);
         true
     }
 
     fn write_resource(&mut self, offset: u64, bytes: &[u8]) -> bool {
-        if !self.receiving_program_bank
+        if self.receiving_cassette.is_none()
             || offset != self.incoming.len() as u64
             || self.incoming.len() + bytes.len() > MAX_RESOURCE_BYTES
         {
-            self.receiving_program_bank = false;
+            self.receiving_cassette = None;
             return false;
         }
         self.incoming.extend_from_slice(bytes);
@@ -300,17 +475,21 @@ impl Processor for Rf106 {
     }
 
     fn end_resource(&mut self) -> bool {
-        if !self.receiving_program_bank {
+        let Some(bay) = self.receiving_cassette.take() else {
             return false;
-        }
-        self.receiving_program_bank = false;
-        let accepted = self.install_sysex_bank();
+        };
+        let accepted = self.install_cassette(bay);
         self.incoming.clear();
         accepted
     }
 
     fn write_program_catalog(&mut self, destination: &mut [u8]) -> Option<usize> {
-        catalog::write(&self.imported, &self.custom, destination)
+        catalog::write(
+            &self.cassettes,
+            &self.cassette_names,
+            &self.custom,
+            destination,
+        )
     }
 
     fn load_preset(&mut self, id: &str) -> bool {
@@ -320,8 +499,13 @@ impl Processor for Rf106 {
             };
             return self.load_tone(tone);
         }
-        if let Some(index) = imported_index(id) {
-            let Some(tone) = self.imported.get(index).map(|program| program.tone) else {
+        if let Some((bay, index)) = cassette_program(id) {
+            let Some(tone) = self
+                .cassettes
+                .get(bay)
+                .and_then(|cassette| cassette.get(index))
+                .map(|program| program.tone)
+            else {
                 return false;
             };
             return self.load_tone(tone);
@@ -524,6 +708,278 @@ impl Processor for Rf106 {
     }
 }
 
+impl rackforge_plugin_sdk::ParallelProcessor for Rf106 {
+    type Unit = ParallelVoiceUnit;
+
+    fn prepare(
+        &mut self,
+        sample_rate: f64,
+        maximum_frames: u32,
+        input_channels: u32,
+        output_channels: u32,
+    ) -> bool {
+        if input_channels != 0
+            || output_channels != MAX_OUTPUT_CHANNELS as u32
+            || maximum_frames as usize > MAX_FRAMES
+        {
+            return false;
+        }
+        self.synth.capture_voice_commands(true);
+        self.synth.prepare(sample_rate)
+    }
+
+    fn set_parameter(&mut self, index: u32, value: f64) -> bool {
+        Processor::set_parameter(self, index, value)
+    }
+
+    fn get_parameter(&self, index: u32) -> Option<f64> {
+        Processor::get_parameter(self, index)
+    }
+
+    fn reset(&mut self) {
+        Processor::reset(self)
+    }
+
+    fn begin_resource(&mut self, id: &str, total_bytes: u64) -> bool {
+        Processor::begin_resource(self, id, total_bytes)
+    }
+
+    fn write_resource(&mut self, offset: u64, bytes: &[u8]) -> bool {
+        Processor::write_resource(self, offset, bytes)
+    }
+
+    fn end_resource(&mut self) -> bool {
+        Processor::end_resource(self)
+    }
+
+    fn write_program_catalog(&mut self, destination: &mut [u8]) -> Option<usize> {
+        Processor::write_program_catalog(self, destination)
+    }
+
+    fn load_preset(&mut self, id: &str) -> bool {
+        Processor::load_preset(self, id)
+    }
+
+    fn save_state(&self, destination: &mut [u8]) -> Option<usize> {
+        Processor::save_state(self, destination)
+    }
+
+    fn load_state(&mut self, state: &[u8]) -> bool {
+        Processor::load_state(self, state)
+    }
+
+    fn program_editing_capabilities(&self) -> u32 {
+        Processor::program_editing_capabilities(self)
+    }
+
+    fn begin_program_edit(&mut self, request: &[u8], destination: &mut [u8]) -> Option<usize> {
+        Processor::begin_program_edit(self, request, destination)
+    }
+
+    fn prepare_program_save(&mut self, document: &[u8], destination: &mut [u8]) -> Option<usize> {
+        Processor::prepare_program_save(self, document, destination)
+    }
+
+    fn install_program(&mut self, prepared: &[u8]) -> bool {
+        Processor::install_program(self, prepared)
+    }
+
+    fn preview_program(&mut self, prepared: &[u8]) -> bool {
+        Processor::preview_program(self, prepared)
+    }
+
+    fn program_editor_view(&mut self, document: &[u8], destination: &mut [u8]) -> Option<usize> {
+        Processor::program_editor_view(self, document, destination)
+    }
+
+    fn apply_program_edit(&mut self, request: &[u8], destination: &mut [u8]) -> Option<usize> {
+        Processor::apply_program_edit(self, request, destination)
+    }
+
+    fn begin_block(&mut self, context: &BlockContext<'_>, plan: &mut PlanWriter<'_>) {
+        let frames = context.frames as usize;
+        if frames == 0 || frames > MAX_FRAMES {
+            return;
+        }
+        for commands in &mut self.commands {
+            commands.clear();
+        }
+        self.command_overflow = false;
+        let initial_epoch = self.synth.voice_epoch();
+        self.capture_voice_commands(0);
+
+        let header = SharedHeader {
+            magic: SHARED_MAGIC,
+            version: PARALLEL_WIRE_VERSION,
+            frames: context.frames,
+            sample_rate_bits: self.synth.sample_rate().to_bits(),
+        };
+        let mut shared_offset = 0;
+        write_value(plan.shared_buffer(), &mut shared_offset, &header);
+
+        let mut midi_index = 0;
+        let mut parameter_index = 0;
+        for frame in 0..frames {
+            while let Some(event) = context.parameters.get(parameter_index) {
+                if event.frame as usize != frame {
+                    break;
+                }
+                let _ = Processor::set_parameter(self, event.index, event.value);
+                self.capture_voice_commands(frame as u32);
+                parameter_index += 1;
+            }
+            while let Some(event) = context.midi.get(midi_index) {
+                if event.frame as usize != frame {
+                    break;
+                }
+                self.apply_midi(*event);
+                self.capture_voice_commands(frame as u32);
+                midi_index += 1;
+            }
+
+            let prepared = self.synth.prepare_next_sample();
+            self.end_frames[frame] = EndFrame {
+                finish: prepared.finish,
+                host_master: self.synth.parameter(NATIVE_HOST_MASTER).unwrap_or(0.0) as f32,
+            };
+            write_value(plan.shared_buffer(), &mut shared_offset, &prepared.common);
+        }
+
+        if !plan.commit_shared(shared_offset) || self.command_overflow {
+            return;
+        }
+        for unit in 0..VOICE_COUNT {
+            let payload_bytes = self.write_dispatch(unit, frames, initial_epoch);
+            let activated = plan.activate(unit as u32, &self.dispatch_scratch[..payload_bytes]);
+            debug_assert!(activated);
+        }
+    }
+
+    fn render_unit(
+        unit_index: u32,
+        unit: &mut Self::Unit,
+        payload: &[u8],
+        context: &UnitContext<'_>,
+        output: &mut [f32],
+    ) {
+        let channels = context.output_channels as usize;
+        let samples = context.frames as usize * channels;
+        output[..samples].fill(0.0);
+        if channels != MAX_OUTPUT_CHANNELS {
+            return;
+        }
+        let Some((shared_header, mut shared_offset)) =
+            read_value::<SharedHeader>(context.shared, 0)
+        else {
+            return;
+        };
+        let Some((dispatch_header, command_offset)) = read_value::<DispatchHeader>(payload, 0)
+        else {
+            return;
+        };
+        if shared_header.magic != SHARED_MAGIC
+            || shared_header.version != PARALLEL_WIRE_VERSION
+            || shared_header.frames != context.frames
+            || dispatch_header.magic != DISPATCH_MAGIC
+            || dispatch_header.version != PARALLEL_WIRE_VERSION
+            || dispatch_header.frames != context.frames
+            || dispatch_header.command_count as usize > MAX_COMMANDS_PER_UNIT
+        {
+            return;
+        }
+        let sample_rate = f32::from_bits(shared_header.sample_rate_bits);
+        if !sample_rate.is_finite() || sample_rate <= 0.0 {
+            return;
+        }
+        let unit_index = unit_index as usize;
+        unit.synchronize_epoch(dispatch_header.initial_epoch, unit_index);
+        let mut command_index = 0;
+        for frame in 0..context.frames as usize {
+            while command_index < dispatch_header.command_count as usize {
+                let offset = command_offset + command_index * mem::size_of::<WireVoiceCommand>();
+                let Some((wire, _)) = read_value::<WireVoiceCommand>(payload, offset) else {
+                    return;
+                };
+                if wire.frame as usize != frame {
+                    break;
+                }
+                let Some(command) = wire.decode() else {
+                    return;
+                };
+                unit.apply_command(command, unit_index);
+                command_index += 1;
+            }
+            let Some((common, next_shared)) =
+                read_value::<CommonVoiceFrame>(context.shared, shared_offset)
+            else {
+                return;
+            };
+            shared_offset = next_shared;
+            let sample = unit.next(sample_rate, common);
+            let offset = frame * channels;
+            output[offset] = sample;
+            output[offset + 1] = sample;
+        }
+    }
+
+    fn end_block(
+        &mut self,
+        mix: &UnitMix<'_>,
+        output: &mut [f32],
+        frames: u32,
+        output_channels: u32,
+    ) {
+        let channels = output_channels as usize;
+        if channels != MAX_OUTPUT_CHANNELS {
+            output.fill(0.0);
+            return;
+        }
+        for frame in 0..frames as usize {
+            let mut voice_sum = 0.0;
+            for unit in mix.active_units() {
+                voice_sum += mix.slot(unit)[frame * channels];
+            }
+            let end = self.end_frames[frame];
+            let (left, right) = self.synth.finish_prepared_sample(end.finish, voice_sum);
+            let offset = frame * channels;
+            output[offset] = protect_host_output(left, end.host_master);
+            output[offset + 1] = protect_host_output(right, end.host_master);
+        }
+    }
+}
+
+fn write_value<T: Copy>(destination: &mut [u8], offset: &mut usize, value: &T) {
+    let bytes = unsafe {
+        // SAFETY: the private coordinator/unit wire format contains only
+        // initialized Copy values from this exact component build.
+        slice::from_raw_parts((value as *const T).cast::<u8>(), mem::size_of::<T>())
+    };
+    destination[*offset..*offset + bytes.len()].copy_from_slice(bytes);
+    *offset += bytes.len();
+}
+
+fn write_values<T: Copy>(destination: &mut [u8], offset: &mut usize, values: &[T]) {
+    let byte_count = mem::size_of_val(values);
+    let bytes = unsafe {
+        // SAFETY: same private wire format as `write_value`; the source slice
+        // remains live for the duration of the copy.
+        slice::from_raw_parts(values.as_ptr().cast::<u8>(), byte_count)
+    };
+    destination[*offset..*offset + byte_count].copy_from_slice(bytes);
+    *offset += byte_count;
+}
+
+fn read_value<T: Copy>(source: &[u8], offset: usize) -> Option<(T, usize)> {
+    let end = offset.checked_add(mem::size_of::<T>())?;
+    let bytes = source.get(offset..end)?;
+    let value = unsafe {
+        // SAFETY: coordinator and unit decode the same private payload and use
+        // an explicit unaligned read from a bounds-checked byte range.
+        core::ptr::read_unaligned(bytes.as_ptr().cast::<T>())
+    };
+    Some((value, end))
+}
+
 /// RackForge-only gain and fault containment. This is intentionally outside
 /// `rf-106-dsp`: it is not part of the RF-106 circuit model.
 fn protect_host_output(sample: f32, master: f32) -> f32 {
@@ -575,8 +1031,11 @@ impl Rf106 {
     }
 }
 
-export_processor!(
+export_parallel_processor!(
     Rf106,
+    max_units = VOICE_COUNT,
+    dispatch_stride = DISPATCH_STRIDE,
+    shared_capacity = SHARED_CAPACITY,
     max_frames = 4096,
     max_input_channels = 0,
     max_output_channels = 2,
@@ -588,6 +1047,15 @@ export_processor!(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard};
+
+    static PARALLEL_EXPORT_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn parallel_export_test_guard() -> MutexGuard<'static, ()> {
+        PARALLEL_EXPORT_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 
     #[test]
     fn processor_renders_and_round_trips_opaque_state() {
@@ -612,6 +1080,125 @@ mod tests {
         );
         assert!(output.iter().all(|sample| sample.is_finite()));
         assert!(output.iter().any(|sample| sample.abs() > 0.0001));
+    }
+
+    #[test]
+    fn parallel_voice_contract_is_bit_exact_with_the_sequential_engine() {
+        let _guard = parallel_export_test_guard();
+        const FRAMES: u32 = 256;
+        let mut reference = Rf106::default();
+        reference.synth.capture_voice_commands(true);
+        assert!(Processor::prepare(&mut reference, 48_000.0, FRAMES, 0, 2));
+        let mut parallel = RackForgeParallelExport::default();
+        assert!(Processor::prepare(&mut parallel, 48_000.0, FRAMES, 0, 2));
+        assert!(Processor::load_preset(&mut reference, "factory.rf106.000"));
+        assert!(Processor::load_preset(&mut parallel, "factory.rf106.000"));
+
+        let scripts: [(&[MidiEvent], &[ParameterEvent]); 5] = [
+            (
+                &[
+                    MidiEvent {
+                        frame: 3,
+                        data: [0x90, 48, 110],
+                        length: 3,
+                    },
+                    MidiEvent {
+                        frame: 11,
+                        data: [0x90, 55, 100],
+                        length: 3,
+                    },
+                    MidiEvent {
+                        frame: 29,
+                        data: [0x90, 60, 96],
+                        length: 3,
+                    },
+                ],
+                &[],
+            ),
+            (
+                &[MidiEvent {
+                    frame: 41,
+                    data: [0xb0, 64, 127],
+                    length: 3,
+                }],
+                &[ParameterEvent {
+                    frame: 17,
+                    index: PUBLIC_CHORUS_MODE_INDEX,
+                    value: 2.0,
+                }],
+            ),
+            (
+                &[
+                    MidiEvent {
+                        frame: 23,
+                        data: [0x80, 48, 0],
+                        length: 3,
+                    },
+                    MidiEvent {
+                        frame: 47,
+                        data: [0x80, 55, 0],
+                        length: 3,
+                    },
+                ],
+                &[],
+            ),
+            (
+                &[
+                    MidiEvent {
+                        frame: 7,
+                        data: [0xb0, 64, 0],
+                        length: 3,
+                    },
+                    MidiEvent {
+                        frame: 101,
+                        data: [0xe0, 0x7f, 0x7f],
+                        length: 3,
+                    },
+                ],
+                &[ParameterEvent {
+                    frame: 67,
+                    index: PUBLIC_PHYSICAL_VOLUME_INDEX,
+                    value: 0.73,
+                }],
+            ),
+            (
+                &[MidiEvent {
+                    frame: 31,
+                    data: [0xb0, 123, 0],
+                    length: 3,
+                }],
+                &[],
+            ),
+        ];
+
+        for (block, (midi, parameters)) in scripts.into_iter().enumerate() {
+            let mut expected = [0.0_f32; FRAMES as usize * 2];
+            let mut actual = [0.0_f32; FRAMES as usize * 2];
+            Processor::process(
+                &mut reference,
+                &[],
+                &mut expected,
+                midi,
+                parameters,
+                FRAMES,
+                0,
+                2,
+            );
+            Processor::process(
+                &mut parallel,
+                &[],
+                &mut actual,
+                midi,
+                parameters,
+                FRAMES,
+                0,
+                2,
+            );
+            assert_eq!(
+                actual, expected,
+                "parallel render diverged at block {block}"
+            );
+        }
     }
 
     #[test]
@@ -877,7 +1464,7 @@ mod tests {
     }
 
     #[test]
-    fn original_sysex_resource_becomes_an_editable_program_bank() {
+    fn each_sysex_cassette_becomes_an_independent_editable_program_bank() {
         let first = Tone::from_factory(factory_preset(0).unwrap())
             .encode_apr(rf_106_contract::sysex::APR_PROGRAM, 0, 0)
             .unwrap();
@@ -888,12 +1475,20 @@ mod tests {
         bank.extend_from_slice(&second);
 
         let mut plugin = Rf106::default();
-        assert!(plugin.begin_resource(RESOURCE_PROGRAM_BANK, bank.len() as u64));
+        assert!(plugin.begin_resource("cassette-3", bank.len() as u64));
         assert!(plugin.write_resource(0, &bank[..17]));
         assert!(plugin.write_resource(17, &bank[17..]));
         assert!(plugin.end_resource());
-        assert_eq!(plugin.imported.len(), 2);
-        assert!(plugin.load_preset("imported.rf106.001"));
+        assert_eq!(plugin.cassettes[2].len(), 2);
+        assert!(plugin.cassettes[0].is_empty());
+        assert!(plugin.load_preset("cassette.rf106.3.001"));
+
+        assert!(!plugin.begin_resource("program-bank", first.len() as u64));
+        assert!(plugin.begin_resource("cassette-8", first.len() as u64));
+        assert!(plugin.write_resource(0, &first));
+        assert!(plugin.end_resource());
+        assert_eq!(plugin.cassettes[2].len(), 2);
+        assert_eq!(plugin.cassettes[7].len(), 1);
 
         let mut output = vec![0; 64 * 1024];
         let length = plugin.write_program_catalog(&mut output).unwrap();
@@ -903,7 +1498,14 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .iter()
-                .any(|bank| bank["id"] == "imported.rf106")
+                .any(|bank| bank["id"] == "cassette.rf106.3")
+        );
+        assert!(
+            catalog["banks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|bank| bank["id"] == "cassette.rf106.8")
         );
         assert!(
             catalog["presets"]
@@ -911,8 +1513,15 @@ mod tests {
                 .unwrap()
                 .iter()
                 .any(|program| {
-                    program["id"] == "imported.rf106.001" && program["editable"] == true
+                    program["id"] == "cassette.rf106.3.001" && program["editable"] == true
                 })
+        );
+        assert!(
+            !catalog["banks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|bank| bank["id"] == "cassette.rf106.1")
         );
     }
 

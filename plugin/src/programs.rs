@@ -2,9 +2,20 @@ use alloc::{format, string::String, vec::Vec};
 use rf_106_contract::sysex::Tone;
 
 pub const CUSTOM_PREFIX: &str = "custom.";
-pub const IMPORTED_PREFIX: &str = "imported.rf106.";
+pub const CASSETTE_PREFIX: &str = "cassette.rf106.";
+pub const CASSETTE_BAYS: usize = 8;
+pub const CASSETTE_RESOURCES: [&str; CASSETTE_BAYS] = [
+    "cassette-1",
+    "cassette-2",
+    "cassette-3",
+    "cassette-4",
+    "cassette-5",
+    "cassette-6",
+    "cassette-7",
+    "cassette-8",
+];
 pub const MAX_CUSTOM_PROGRAMS: usize = 128;
-pub const MAX_IMPORTED_PROGRAMS: usize = 128;
+pub const MAX_PROGRAMS_PER_CASSETTE: usize = 128;
 const ID_PREFIX: &str = "user.rf106-";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -58,13 +69,25 @@ impl CustomPrograms {
     }
 }
 
-pub fn imported_index(id: &str) -> Option<usize> {
-    let digits = id.strip_prefix(IMPORTED_PREFIX)?;
-    if digits.len() != 3 || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+pub fn cassette_bay(resource_id: &str) -> Option<usize> {
+    CASSETTE_RESOURCES
+        .iter()
+        .position(|candidate| *candidate == resource_id)
+}
+
+pub fn cassette_program(id: &str) -> Option<(usize, usize)> {
+    let suffix = id.strip_prefix(CASSETTE_PREFIX)?;
+    let (bay, program) = suffix.split_once('.')?;
+    if bay.len() != 1
+        || !bay.bytes().all(|byte| byte.is_ascii_digit())
+        || program.len() != 3
+        || !program.bytes().all(|byte| byte.is_ascii_digit())
+    {
         return None;
     }
-    let index: usize = digits.parse().ok()?;
-    (index < MAX_IMPORTED_PROGRAMS).then_some(index)
+    let bay = bay.parse::<usize>().ok()?.checked_sub(1)?;
+    let program = program.parse::<usize>().ok()?;
+    (bay < CASSETTE_BAYS && program < MAX_PROGRAMS_PER_CASSETTE).then_some((bay, program))
 }
 
 #[cfg(test)]
@@ -91,5 +114,16 @@ mod tests {
             CustomPrograms::document_id("custom.user.rf106-001"),
             Some("user.rf106-001")
         );
+    }
+
+    #[test]
+    fn cassette_resources_and_program_ids_name_exact_bays() {
+        assert_eq!(cassette_bay("cassette-1"), Some(0));
+        assert_eq!(cassette_bay("cassette-8"), Some(7));
+        assert_eq!(cassette_bay("cassette-9"), None);
+        assert_eq!(cassette_program("cassette.rf106.1.000"), Some((0, 0)));
+        assert_eq!(cassette_program("cassette.rf106.8.127"), Some((7, 127)));
+        assert_eq!(cassette_program("cassette.rf106.8.128"), None);
+        assert_eq!(cassette_program("cassette.rf106.0.000"), None);
     }
 }

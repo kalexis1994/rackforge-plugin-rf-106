@@ -13,6 +13,8 @@ validated with deterministic DSP tests and repeatable offline experiments.
 ## Features
 
 - Six-voice polyphony with two allocation modes, key transpose and portamento.
+- Six persistent RackForge render units, one per physical voice, scheduled in
+  parallel before the deterministic analog sum and stereo chorus stages.
 - Pulse and saw oscillators, sub-oscillator, noise, PWM and LFO modulation.
 - Four-position high-pass filter and a resonant, envelope-modulated low-pass
   filter with keyboard tracking.
@@ -20,7 +22,8 @@ validated with deterministic DSP tests and repeatable offline experiments.
 - Two stereo chorus modes with clock, delay-line and compander behaviour.
 - Performance bender with pitch bend and LFO trigger gestures.
 - 128 factory programs exposed through the panel and RackForge preset browser.
-- Original 18-byte JUNO-106 tone Programs with `.syx` bank import and export.
+- Eight cassette-shaped banks for original 18-byte JUNO-106 tone Programs,
+  with independent `.106`/`.syx` import and hardware-compatible SysEx export.
 - Mouse, touch and keyboard interaction, plus host-owned MIDI parameter linking.
 
 ## Repository layout
@@ -77,7 +80,7 @@ cargo +stable-x86_64-pc-windows-msvc install wasm-bindgen-cli --version 0.2.127 
 ./tools/build-package.ps1
 ```
 
-The package is written to `artifacts/rf-106-0.2.13.rfplugin`. It contains the
+The package is written to `artifacts/rf-106-0.2.19.rfplugin`. It contains the
 audio component, versioned metadata and the plugin-owned web interface; it does
 not contain a platform-specific executable.
 
