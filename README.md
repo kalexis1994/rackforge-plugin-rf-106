@@ -79,8 +79,10 @@ GitHub Actions also builds the portable package after the x86-64 and ARM test
 jobs pass. Every workflow run publishes `RF-106.rfplugin` together with its
 SHA-256 checksum as a downloadable artifact retained for 30 days.
 
-The canonical RackForge icon, banner and splash can be regenerated from the
-same panel palette and control language used by the plugin UI:
+The RackForge icon, banner and splash use original artwork based on the plugin
+UI's palette, split fader markers and shared graduations. Only the final package
+assets are stored in the repository. Validate their dimensions, encoding and
+file-size limits with Pillow:
 
 ```bash
 python tools/generate-branding.py
