@@ -53,8 +53,8 @@ approximately 0 V and +15 V, not TTL 0/5 V:
 This also resolves the old synthetic `I+II` mode. A coincident I+II panel scan
 would store `0xC0`, transmit `0x3F` and reach exactly the same two Module Board
 lines as mode I. It is not a fourth sonic state. The former 7.85 Hz coordinate
-was an E6 property of the emulator itself and has been removed. Legacy RF-106
-state value 3 is accepted only as a compatibility alias and canonicalized to I.
+was an E6 property of the emulator itself and has been removed. RF-106 exposes
+only the three physical states and rejects any other selector value.
 
 ## Readable component inventory
 

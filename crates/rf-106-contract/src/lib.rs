@@ -1,10 +1,38 @@
 #![no_std]
 
 pub const PLUGIN_ID: &str = "org.rackforge.rf-106";
-pub const PLUGIN_VERSION: &str = "0.2.9";
-pub const STATE_SCHEMA_VERSION: u32 = 1;
+pub const PLUGIN_VERSION: &str = "0.2.13";
+pub const STATE_SCHEMA_VERSION: u32 = 2;
 pub const DEFAULT_FACTORY_PROGRAM: u32 = 0;
 pub const NATIVE_PARAMETER_COUNT: usize = 56;
+/// Native slots that belong to the JUNO-106's documented 18-byte tone data.
+/// Keep these names beside the SysEx codec so the UI, DSP and program files
+/// cannot silently disagree about the historical parameter order.
+pub const NATIVE_LFO_RATE: usize = 3;
+pub const NATIVE_LFO_DELAY: usize = 4;
+pub const NATIVE_DCO_LFO: usize = 5;
+pub const NATIVE_DCO_PWM: usize = 6;
+pub const NATIVE_DCO_SUB_LEVEL: usize = 7;
+pub const NATIVE_DCO_NOISE_LEVEL: usize = 8;
+pub const NATIVE_HPF: usize = 9;
+pub const NATIVE_VCF_CUTOFF: usize = 10;
+pub const NATIVE_VCF_RESONANCE: usize = 11;
+pub const NATIVE_VCF_ENV: usize = 12;
+pub const NATIVE_VCF_LFO: usize = 13;
+pub const NATIVE_VCF_KEYBOARD: usize = 14;
+pub const NATIVE_VCA_LEVEL: usize = 15;
+pub const NATIVE_ENV_ATTACK: usize = 16;
+pub const NATIVE_ENV_DECAY: usize = 17;
+pub const NATIVE_ENV_SUSTAIN: usize = 18;
+pub const NATIVE_ENV_RELEASE: usize = 19;
+pub const NATIVE_DCO_PULSE: usize = 23;
+pub const NATIVE_DCO_SAW: usize = 24;
+pub const NATIVE_CHORUS_I: usize = 27;
+pub const NATIVE_CHORUS_II: usize = 28;
+pub const NATIVE_DCO_RANGE: usize = 29;
+pub const NATIVE_PWM_MODE: usize = 33;
+pub const NATIVE_VCF_ENV_POLARITY: usize = 34;
+pub const NATIVE_VCA_MODE: usize = 35;
 /// RackForge parameter indices are append-only. The compact surface
 /// occupies 0..=13; the complete RF-106 audio panel starts at 14 so existing
 /// sessions and automation lanes keep their identity.
@@ -37,6 +65,7 @@ pub struct FactoryPreset {
 
 mod factory_presets;
 pub use factory_presets::FACTORY_PRESETS;
+pub mod sysex;
 
 pub fn factory_preset(index: u32) -> Option<&'static FactoryPreset> {
     FACTORY_PRESETS.get(index as usize)
@@ -90,9 +119,7 @@ pub fn public_parameter_value_is_valid(public_index: u32, value: f64) -> bool {
         return value == 0.0 || value == 1.0;
     }
     if public_index == PUBLIC_CHORUS_MODE_INDEX {
-        // 0/1/2 are the three firmware states. Hidden value 3 remains valid
-        // solely so older RF-106 automation can be canonicalized to mode I.
-        return value == value as i64 as f64 && (0.0..=3.0).contains(&value);
+        return value == value as i64 as f64 && (0.0..=2.0).contains(&value);
     }
     if public_index == PUBLIC_MIDI_CHANNEL_INDEX {
         return value == value as i64 as f64 && (1.0..=16.0).contains(&value);
@@ -223,7 +250,7 @@ mod tests {
                 f64::from(mode)
             ));
         }
-        assert!(public_parameter_value_is_valid(
+        assert!(!public_parameter_value_is_valid(
             PUBLIC_CHORUS_MODE_INDEX,
             3.0
         ));

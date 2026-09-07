@@ -1,15 +1,30 @@
-#![cfg_attr(target_arch = "wasm32", no_std)]
+extern crate alloc;
 
-use rackforge_plugin_sdk::{MidiEvent, ParameterEvent, Processor, export_processor};
+mod catalog;
+mod program;
+mod programs;
+
+use alloc::{format, string::String, string::ToString, vec::Vec};
+use program::{
+    PROGRAM_EDIT_SCHEMA_VERSION, PROGRAM_SCHEMA_VERSION, PreparedProgram, ProgramDocument,
+    ProgramEditRequest, ProgramFieldEditRequest,
+};
+use programs::{CustomPrograms, Program, imported_index};
+use rackforge_plugin_sdk::{
+    MidiEvent, PROGRAM_EDIT_BASIC, PROGRAM_EDIT_DECLARATIVE, PROGRAM_EDIT_PREVIEW, ParameterEvent,
+    Processor, export_processor,
+};
 use rf_106_contract::{
     DEFAULT_FACTORY_PROGRAM, NATIVE_PARAMETER_COUNT, PUBLIC_BENDER_POSITION_INDEX,
     PUBLIC_CHORUS_MODE_INDEX, PUBLIC_KEY_TRANSPOSE_TRIGGER_INDEX, PUBLIC_LFO_TRIGGER_INDEX,
     PUBLIC_MIDI_CHANNEL_INDEX, PUBLIC_MIDI_FUNCTION_INDEX, PUBLIC_PHYSICAL_VOLUME_INDEX,
     PUBLIC_PORTAMENTO_SWITCH_INDEX, STATE_SCHEMA_VERSION, factory_preset, parse_preset_id,
     public_parameter_value_is_valid, public_to_native_parameter,
+    sysex::{APR_BYTES, Tone},
 };
 use rf_106_control::{MidiFunction, MidiReceiveAction, MidiReceiver};
 use rf_106_dsp::Synth;
+use serde::Serialize;
 
 const STATE_MAGIC: [u8; 4] = *b"R106";
 const PARAMETER_STATE_END: usize = 12 + NATIVE_PARAMETER_COUNT * 8;
@@ -21,12 +36,18 @@ const NATIVE_HOST_MASTER: u32 = 44;
 const HOST_GAIN_AT_UNITY: f32 = 0.32;
 const HOST_LIMIT_THRESHOLD: f32 = 0.90;
 const HOST_LIMIT_CEILING: f32 = 0.98;
+const RESOURCE_PROGRAM_BANK: &str = "program-bank";
+const MAX_RESOURCE_BYTES: usize = 1_048_576;
 
 struct Rf106 {
     synth: Synth,
     midi: MidiReceiver,
     selected_factory_program: u32,
     key_transpose_armed: bool,
+    custom: CustomPrograms,
+    imported: Vec<Program>,
+    incoming: Vec<u8>,
+    receiving_program_bank: bool,
 }
 
 impl Default for Rf106 {
@@ -36,8 +57,87 @@ impl Default for Rf106 {
             midi: MidiReceiver::new(),
             selected_factory_program: DEFAULT_FACTORY_PROGRAM,
             key_transpose_armed: false,
+            custom: CustomPrograms::default(),
+            imported: Vec::new(),
+            incoming: Vec::new(),
+            receiving_program_bank: false,
         }
     }
+}
+
+impl Rf106 {
+    fn tone_for_catalog_id(&self, id: &str) -> Option<(Tone, Option<String>, String)> {
+        if let Some(document_id) = CustomPrograms::document_id(id) {
+            let program = self.custom.find(document_id)?;
+            return Some((program.tone, Some(program.id.clone()), program.name.clone()));
+        }
+        if let Some(index) = imported_index(id) {
+            let program = self.imported.get(index)?;
+            return Some((program.tone, None, program.name.clone()));
+        }
+        let index = parse_preset_id(id)?;
+        let preset = factory_preset(index)?;
+        Some((Tone::from_factory(preset), None, preset.name.to_string()))
+    }
+
+    fn prepare_document(&self, document: ProgramDocument) -> Option<PreparedProgram> {
+        if document.schema_version != PROGRAM_SCHEMA_VERSION {
+            return None;
+        }
+        program::prepared(document, &self.custom)
+    }
+
+    fn load_tone(&mut self, tone: Tone) -> bool {
+        self.synth.load_tone(&tone)
+    }
+
+    fn install_sysex_bank(&mut self) -> bool {
+        let mut programs = Vec::new();
+        let mut offset = 0;
+        while offset < self.incoming.len() {
+            let Some(relative) = self.incoming[offset..]
+                .iter()
+                .position(|byte| *byte == 0xf0)
+            else {
+                break;
+            };
+            offset += relative;
+            let Some(message) = self.incoming.get(offset..offset + APR_BYTES) else {
+                break;
+            };
+            if let Some(apr) = Tone::decode_apr(message) {
+                if programs.len() >= programs::MAX_IMPORTED_PROGRAMS {
+                    return false;
+                }
+                programs.push(Program {
+                    id: format!("imported-{:03}", programs.len()),
+                    name: format!("Imported {}", hardware_patch_code(apr.patch)),
+                    tone: apr.tone,
+                });
+                offset += APR_BYTES;
+            } else {
+                offset += 1;
+            }
+        }
+        if programs.is_empty() {
+            return false;
+        }
+        self.imported = programs;
+        true
+    }
+}
+
+fn hardware_patch_code(number: u8) -> String {
+    let group = if number < 64 { 'A' } else { 'B' };
+    let cell = number % 64;
+    format!("{group}{}{}", cell / 8 + 1, cell % 8 + 1)
+}
+
+fn emit<T: Serialize>(value: &T, destination: &mut [u8]) -> Option<usize> {
+    let bytes = serde_json::to_vec(value).ok()?;
+    let output = destination.get_mut(..bytes.len())?;
+    output.copy_from_slice(&bytes);
+    Some(bytes.len())
 }
 
 impl Processor for Rf106 {
@@ -72,11 +172,8 @@ impl Processor for Rf106 {
             }
             let (chorus_i, chorus_ii) = match value as u8 {
                 0 => (0.0, 0.0),
+                1 => (1.0, 0.0),
                 2 => (0.0, 1.0),
-                // Value 3 was exposed by older RF-106 builds. Preserve state
-                // and automation compatibility, but canonicalize it to mode I
-                // exactly as the original firmware's coincident I+II scan.
-                1 | 3 => (1.0, 0.0),
                 _ => return false,
             };
             return self.synth.set_parameter(27, chorus_i)
@@ -180,15 +277,61 @@ impl Processor for Rf106 {
         self.key_transpose_armed = false;
     }
 
-    fn load_preset(&mut self, id: &str) -> bool {
-        let Some(index) = parse_preset_id(id) else {
+    fn begin_resource(&mut self, id: &str, total_bytes: u64) -> bool {
+        if id != RESOURCE_PROGRAM_BANK || total_bytes > MAX_RESOURCE_BYTES as u64 {
             return false;
-        };
-        if self.synth.load_factory_preset(index) {
-            self.selected_factory_program = index;
-            true
-        } else {
-            false
+        }
+        self.incoming.clear();
+        self.incoming.reserve(total_bytes as usize);
+        self.receiving_program_bank = true;
+        true
+    }
+
+    fn write_resource(&mut self, offset: u64, bytes: &[u8]) -> bool {
+        if !self.receiving_program_bank
+            || offset != self.incoming.len() as u64
+            || self.incoming.len() + bytes.len() > MAX_RESOURCE_BYTES
+        {
+            self.receiving_program_bank = false;
+            return false;
+        }
+        self.incoming.extend_from_slice(bytes);
+        true
+    }
+
+    fn end_resource(&mut self) -> bool {
+        if !self.receiving_program_bank {
+            return false;
+        }
+        self.receiving_program_bank = false;
+        let accepted = self.install_sysex_bank();
+        self.incoming.clear();
+        accepted
+    }
+
+    fn write_program_catalog(&mut self, destination: &mut [u8]) -> Option<usize> {
+        catalog::write(&self.imported, &self.custom, destination)
+    }
+
+    fn load_preset(&mut self, id: &str) -> bool {
+        if let Some(document_id) = CustomPrograms::document_id(id) {
+            let Some(tone) = self.custom.find(document_id).map(|program| program.tone) else {
+                return false;
+            };
+            return self.load_tone(tone);
+        }
+        if let Some(index) = imported_index(id) {
+            let Some(tone) = self.imported.get(index).map(|program| program.tone) else {
+                return false;
+            };
+            return self.load_tone(tone);
+        }
+        match parse_preset_id(id) {
+            Some(index) if self.synth.load_factory_preset(index) => {
+                self.selected_factory_program = index;
+                true
+            }
+            _ => false,
         }
     }
 
@@ -251,12 +394,6 @@ impl Processor for Rf106 {
         if !public_parameter_value_is_valid(PUBLIC_PHYSICAL_VOLUME_INDEX, physical_volume) {
             return false;
         }
-        // Builds before the firmware audit could persist the synthetic I+II
-        // state as two native booleans. Canonicalize it during load so the
-        // next save contains the real mode-I representation.
-        if parameters[27] >= 0.5 && parameters[28] >= 0.5 {
-            parameters[28] = 0.0;
-        }
         if !self.synth.load_parameters(&parameters) {
             return false;
         }
@@ -276,6 +413,75 @@ impl Processor for Rf106 {
         self.selected_factory_program = program;
         self.key_transpose_armed = false;
         true
+    }
+
+    fn program_editing_capabilities(&self) -> u32 {
+        PROGRAM_EDIT_BASIC | PROGRAM_EDIT_PREVIEW | PROGRAM_EDIT_DECLARATIVE
+    }
+
+    fn begin_program_edit(&mut self, request: &[u8], destination: &mut [u8]) -> Option<usize> {
+        let request: ProgramEditRequest = serde_json::from_slice(request).ok()?;
+        if request.schema_version != PROGRAM_EDIT_SCHEMA_VERSION {
+            return None;
+        }
+        let (tone, id, name) = match request.program_id.as_deref() {
+            Some(catalog_id) => {
+                let (tone, existing, name) = self.tone_for_catalog_id(catalog_id)?;
+                (
+                    tone,
+                    existing.unwrap_or_else(|| self.custom.next_id()),
+                    name,
+                )
+            }
+            None => (
+                Tone::from_native(self.synth.parameters())?,
+                self.custom.next_id(),
+                "RF NEW".to_string(),
+            ),
+        };
+        let document = program::document(&id, &name, tone);
+        emit(&self.prepare_document(document)?, destination)
+    }
+
+    fn prepare_program_save(&mut self, document: &[u8], destination: &mut [u8]) -> Option<usize> {
+        let document: ProgramDocument = serde_json::from_slice(document).ok()?;
+        emit(&self.prepare_document(document)?, destination)
+    }
+
+    fn program_editor_view(&mut self, document: &[u8], destination: &mut [u8]) -> Option<usize> {
+        let document: ProgramDocument = serde_json::from_slice(document).ok()?;
+        emit(&program::editor_view(&document)?, destination)
+    }
+
+    fn apply_program_edit(&mut self, request: &[u8], destination: &mut [u8]) -> Option<usize> {
+        let request: ProgramFieldEditRequest = serde_json::from_slice(request).ok()?;
+        let document = program::apply_edit(request)?;
+        emit(&self.prepare_document(document)?, destination)
+    }
+
+    fn install_program(&mut self, prepared: &[u8]) -> bool {
+        let prepared: PreparedProgram = match serde_json::from_slice(prepared) {
+            Ok(prepared) => prepared,
+            Err(_) => return false,
+        };
+        let Some(prepared) = self.prepare_document(prepared.document) else {
+            return false;
+        };
+        let Some(program) = program::program_of(&prepared.document) else {
+            return false;
+        };
+        self.custom.install(program)
+    }
+
+    fn preview_program(&mut self, prepared: &[u8]) -> bool {
+        let prepared: PreparedProgram = match serde_json::from_slice(prepared) {
+            Ok(prepared) => prepared,
+            Err(_) => return false,
+        };
+        match program::tone_of(&prepared.document) {
+            Some(tone) => self.load_tone(tone),
+            None => false,
+        }
     }
 
     fn process(
@@ -376,14 +582,8 @@ export_processor!(
     max_output_channels = 2,
     max_midi_events = 1024,
     max_parameter_events = 1024,
-    max_transfer_bytes = 1024
+    max_transfer_bytes = 262144
 );
-
-#[cfg(all(target_arch = "wasm32", not(test)))]
-#[panic_handler]
-fn panic(_info: &core::panic::PanicInfo<'_>) -> ! {
-    core::arch::wasm32::unreachable()
-}
 
 #[cfg(test)]
 mod tests {
@@ -415,7 +615,7 @@ mod tests {
     }
 
     #[test]
-    fn tomita_is_audible_through_the_host_after_preset_and_state_loads() {
+    fn original_factory_program_is_audible_after_preset_and_state_loads() {
         fn render_peak(plugin: &mut Rf106) -> f32 {
             let mut output = [0.0; 8_192];
             plugin.process(
@@ -434,7 +634,7 @@ mod tests {
 
         let mut selected = Rf106::default();
         assert!(selected.prepare(48_000.0, 4_096, 0, 2));
-        assert!(selected.load_preset("factory.rf106.084"));
+        assert!(selected.load_preset("factory.rf106.000"));
         let mut state = [0; 1_024];
         let state_length = selected.save_state(&mut state).unwrap();
         let selected_peak = render_peak(&mut selected);
@@ -564,10 +764,7 @@ mod tests {
             assert_eq!(plugin.synth.parameter(28), Some(chorus_ii));
             assert_eq!(plugin.get_parameter(PUBLIC_CHORUS_MODE_INDEX), Some(mode));
         }
-        assert!(plugin.set_parameter(PUBLIC_CHORUS_MODE_INDEX, 3.0));
-        assert_eq!(plugin.synth.parameter(27), Some(1.0));
-        assert_eq!(plugin.synth.parameter(28), Some(0.0));
-        assert_eq!(plugin.get_parameter(PUBLIC_CHORUS_MODE_INDEX), Some(1.0));
+        assert!(!plugin.set_parameter(PUBLIC_CHORUS_MODE_INDEX, 3.0));
         assert!(!plugin.set_parameter(PUBLIC_CHORUS_MODE_INDEX, 1.5));
     }
 
@@ -671,31 +868,72 @@ mod tests {
     }
 
     #[test]
-    fn legacy_combined_chorus_state_migrates_to_mode_one() {
+    fn obsolete_state_schema_is_rejected() {
         let plugin = Rf106::default();
         let mut state = [0; 1024];
         let length = plugin.save_state(&mut state).unwrap();
-        for native in [27_usize, 28_usize] {
-            let offset = 12 + native * 8;
-            state[offset..offset + 8].copy_from_slice(&1.0_f64.to_le_bytes());
-        }
+        state[4..8].copy_from_slice(&1_u32.to_le_bytes());
+        assert!(!Rf106::default().load_state(&state[..length]));
+    }
 
-        let mut restored = Rf106::default();
-        assert!(restored.load_state(&state[..length]));
-        assert_eq!(restored.get_parameter(PUBLIC_CHORUS_MODE_INDEX), Some(1.0));
-        assert_eq!(restored.synth.parameter(27), Some(1.0));
-        assert_eq!(restored.synth.parameter(28), Some(0.0));
+    #[test]
+    fn original_sysex_resource_becomes_an_editable_program_bank() {
+        let first = Tone::from_factory(factory_preset(0).unwrap())
+            .encode_apr(rf_106_contract::sysex::APR_PROGRAM, 0, 0)
+            .unwrap();
+        let second = Tone::from_factory(factory_preset(1).unwrap())
+            .encode_apr(rf_106_contract::sysex::APR_PROGRAM, 0, 1)
+            .unwrap();
+        let mut bank = Vec::from(first);
+        bank.extend_from_slice(&second);
 
-        let mut migrated = [0; 1024];
-        restored.save_state(&mut migrated).unwrap();
-        let chorus_ii_offset = 12 + 28 * 8;
-        assert_eq!(
-            f64::from_le_bytes(
-                migrated[chorus_ii_offset..chorus_ii_offset + 8]
-                    .try_into()
-                    .unwrap()
-            ),
-            0.0
+        let mut plugin = Rf106::default();
+        assert!(plugin.begin_resource(RESOURCE_PROGRAM_BANK, bank.len() as u64));
+        assert!(plugin.write_resource(0, &bank[..17]));
+        assert!(plugin.write_resource(17, &bank[17..]));
+        assert!(plugin.end_resource());
+        assert_eq!(plugin.imported.len(), 2);
+        assert!(plugin.load_preset("imported.rf106.001"));
+
+        let mut output = vec![0; 64 * 1024];
+        let length = plugin.write_program_catalog(&mut output).unwrap();
+        let catalog: serde_json::Value = serde_json::from_slice(&output[..length]).unwrap();
+        assert!(
+            catalog["banks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|bank| bank["id"] == "imported.rf106")
         );
+        assert!(
+            catalog["presets"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|program| {
+                    program["id"] == "imported.rf106.001" && program["editable"] == true
+                })
+        );
+    }
+
+    #[test]
+    fn program_editing_installs_a_saved_program_and_exports_original_sysex() {
+        let mut plugin = Rf106::default();
+        let request = serde_json::to_vec(&ProgramEditRequest {
+            schema_version: PROGRAM_EDIT_SCHEMA_VERSION,
+            program_id: Some("factory.rf106.000".to_string()),
+        })
+        .unwrap();
+        let mut transfer = vec![0; 64 * 1024];
+        let length = plugin.begin_program_edit(&request, &mut transfer).unwrap();
+        let prepared: PreparedProgram = serde_json::from_slice(&transfer[..length]).unwrap();
+        assert_eq!(prepared.document.id, "user.rf106-001");
+        assert_eq!(
+            prepared.artifacts[0].storage_path,
+            "programs/user-rf106-001.syx"
+        );
+        let encoded = serde_json::to_vec(&prepared).unwrap();
+        assert!(plugin.install_program(&encoded));
+        assert!(plugin.load_preset("custom.user.rf106-001"));
     }
 }

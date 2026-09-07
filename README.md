@@ -20,6 +20,7 @@ validated with deterministic DSP tests and repeatable offline experiments.
 - Two stereo chorus modes with clock, delay-line and compander behaviour.
 - Performance bender with pitch bend and LFO trigger gestures.
 - 128 factory programs exposed through the panel and RackForge preset browser.
+- Original 18-byte JUNO-106 tone Programs with `.syx` bank import and export.
 - Mouse, touch and keyboard interaction, plus host-owned MIDI parameter linking.
 
 ## Repository layout
@@ -40,6 +41,11 @@ The plugin exposes 128 factory programs and the complete synthesis panel: LFO,
 DCO, HPF, VCF, VCA, envelope, chorus, performance controls, MIDI channel and
 output controls. Desktop, touch and compact RackForge surfaces operate on the
 same public parameter contract.
+
+Program transfer preserves the original Roland tone bytes inside versioned
+RackForge Program documents. CONFIG can install complete APR dumps as a bank;
+every saved Program also produces hardware-shaped single-tone and bank `.syx`
+artifacts. See [`docs/PROGRAM_TRANSFER.md`](docs/PROGRAM_TRANSFER.md).
 
 ## Fidelity work
 
@@ -71,7 +77,7 @@ cargo +stable-x86_64-pc-windows-msvc install wasm-bindgen-cli --version 0.2.127 
 ./tools/build-package.ps1
 ```
 
-The package is written to `artifacts/rf-106-0.2.9.rfplugin`. It contains the
+The package is written to `artifacts/rf-106-0.2.13.rfplugin`. It contains the
 audio component, versioned metadata and the plugin-owned web interface; it does
 not contain a platform-specific executable.
 

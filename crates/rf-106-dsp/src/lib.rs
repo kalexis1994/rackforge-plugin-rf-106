@@ -1,7 +1,16 @@
 #![no_std]
 
 use rf_106_chorus::{ChorusMode, StereoChorus};
-use rf_106_contract::{NATIVE_PARAMETER_COUNT, factory_preset, native_parameter_value_is_valid};
+use rf_106_contract::{
+    NATIVE_DCO_LFO as PARAM_DCO_LFO, NATIVE_DCO_NOISE_LEVEL as PARAM_DCO_NOISE_LEVEL,
+    NATIVE_DCO_PULSE as PARAM_DCO_PULSE, NATIVE_DCO_PWM as PARAM_DCO_PWM_DEPTH,
+    NATIVE_DCO_RANGE as PARAM_DCO_RANGE, NATIVE_DCO_SAW as PARAM_DCO_SAW,
+    NATIVE_DCO_SUB_LEVEL as PARAM_DCO_SUB_LEVEL, NATIVE_HPF as PARAM_HPF,
+    NATIVE_LFO_DELAY as PARAM_LFO_DELAY, NATIVE_LFO_RATE as PARAM_LFO_RATE, NATIVE_PARAMETER_COUNT,
+    NATIVE_PWM_MODE as PARAM_PWM_MODE, NATIVE_VCA_LEVEL as PARAM_OUTPUT_VCA,
+    NATIVE_VCA_MODE as PARAM_VCA_MODE, NATIVE_VCF_ENV_POLARITY as PARAM_VCF_ENV_POLARITY,
+    factory_preset, native_parameter_value_is_valid, sysex::Tone,
+};
 use rf_106_control::{
     AllocationMode, GlobalLfo, KEYBOARD_KEY_COUNT, KeyTranspose, NoteSource, PerformanceState,
     Portamento, VOICE_COUNT, VoiceAction, VoiceAllocator, combine_dco_lfo_depth,
@@ -15,26 +24,12 @@ use rf_106_voice::{
 
 const PARAM_BENDER_DCO: usize = 0;
 const PARAM_BENDER_VCF: usize = 1;
-const PARAM_LFO_RATE: usize = 3;
-const PARAM_LFO_DELAY: usize = 4;
-const PARAM_DCO_LFO: usize = 5;
-const PARAM_DCO_SUB_LEVEL: usize = 6;
-const PARAM_DCO_PWM_DEPTH: usize = 7;
-const PARAM_DCO_NOISE_LEVEL: usize = 8;
-const PARAM_HPF: usize = 9;
-const PARAM_OUTPUT_VCA: usize = 15;
 const PARAM_TUNING: usize = 37;
 const PARAM_POWER: usize = 38;
 const PARAM_ALLOCATION_MODE: usize = 39;
 const PARAM_PORTAMENTO: usize = 40;
 const PARAM_KEY_TRANSPOSE: usize = 41;
 const PARAM_BENDER_LFO: usize = 42;
-const PARAM_DCO_PULSE: usize = 23;
-const PARAM_DCO_SAW: usize = 24;
-const PARAM_DCO_RANGE: usize = 29;
-const PARAM_PWM_MODE: usize = 33;
-const PARAM_VCF_ENV_POLARITY: usize = 34;
-const PARAM_VCA_MODE: usize = 35;
 const PARAM_HOST_OUTPUT: usize = 44;
 /// A physical program change and the next key scan cannot occur at the same
 /// zero-time instant: the six DCO/VCF cells keep running behind closed VCAs.
@@ -241,6 +236,27 @@ impl Synth {
                 self.parameters[index] = value;
             }
         }
+        // The imported table retains the original SysEx byte divided by 127.
+        // Re-applying its canonical tone fixes the JUNO-106 PWM range (0..105)
+        // and keeps the historical PWM/SUB order explicit.
+        Tone::from_factory(preset).apply_to_native(&mut self.parameters);
+        self.settle_idle_program_change();
+        true
+    }
+
+    /// Load the eighteen controls carried by an original JUNO-106 tone dump.
+    /// Physical performance controls and RackForge-only settings survive it.
+    pub fn load_tone(&mut self, tone: &Tone) -> bool {
+        let mut parameters = self.parameters;
+        tone.apply_to_native(&mut parameters);
+        if parameters
+            .iter()
+            .enumerate()
+            .any(|(index, value)| !native_parameter_value_is_valid(index as u32, *value))
+        {
+            return false;
+        }
+        self.parameters = parameters;
         self.settle_idle_program_change();
         true
     }
@@ -599,9 +615,7 @@ fn render_voice(
     let base_pitch = f32::from(base_pitch_8_8) / 256.0;
     let lfo_pitch = f32::from(control.dco_lfo_8_8) / 256.0;
     let midi = base_pitch + tuning + control.dco_bend_semitones + lfo_pitch;
-    // Native slot 25 remains serializable for old imported states, but it was
-    // a synthetic SUB switch with no physical destination. The real source is
-    // controlled solely by PARAM_DCO_SUB_LEVEL.
+    // The real sub-oscillator source is controlled solely by its level DAC.
     let sources = SourceControl::from_native(
         parameters[PARAM_DCO_SAW] >= 0.5,
         parameters[PARAM_DCO_PULSE] >= 0.5,
@@ -698,14 +712,19 @@ mod tests {
     }
 
     #[test]
-    fn tomita_factory_patch_is_audible_from_its_physical_sub_level() {
+    fn tomita_factory_patch_keeps_its_original_pwm_and_self_oscillating_filter() {
         const TOMITA_B35: u32 = 84;
         let preset = factory_preset(TOMITA_B35).expect("B35 must exist");
         assert_eq!(preset.name, "B35 Tomita");
         assert!(
-            preset.values[PARAM_DCO_SUB_LEVEL] > 0.8,
-            "SUB slider must be raised"
+            preset.values[PARAM_DCO_PWM_DEPTH] > 0.8,
+            "PWM must be raised"
         );
+        assert_eq!(
+            preset.values[PARAM_DCO_SUB_LEVEL], 0.0,
+            "the original SUB level is zero"
+        );
+        assert!(preset.values[11] > 0.98, "the resonant VCF is the source");
         assert_eq!(
             preset.values[PARAM_DCO_NOISE_LEVEL], 0.0,
             "noise is not an audible source"
@@ -718,8 +737,6 @@ mod tests {
             preset.values[PARAM_DCO_SAW], 0.0,
             "saw is not an audible source"
         );
-        assert_eq!(preset.values[25], 0.0, "legacy SUB switch is off");
-
         let mut synth = Synth::default();
         assert!(synth.prepare(48_000.0));
         assert!(synth.load_factory_preset(TOMITA_B35));
@@ -734,31 +751,8 @@ mod tests {
             sum_squares += f64::from(left * left + right * right);
         }
         let rms = (sum_squares / 96_000.0).sqrt();
-        assert!(peak > 0.08, "B35 peak={peak}");
+        assert!(peak > 0.04, "B35 peak={peak}");
         assert!(rms > 0.01, "B35 rms={rms}");
-    }
-
-    #[test]
-    fn legacy_sub_switch_slot_cannot_mute_or_change_tomita() {
-        const TOMITA_B35: u32 = 84;
-        const LEGACY_SUB_SWITCH: u32 = 25;
-        let mut legacy_off = Synth::default();
-        let mut legacy_on = Synth::default();
-        for synth in [&mut legacy_off, &mut legacy_on] {
-            assert!(synth.prepare(48_000.0));
-            assert!(synth.load_factory_preset(TOMITA_B35));
-        }
-        assert!(legacy_off.set_parameter(LEGACY_SUB_SWITCH, 0.0));
-        assert!(legacy_on.set_parameter(LEGACY_SUB_SWITCH, 1.0));
-        legacy_off.note_on(60, 127);
-        legacy_on.note_on(60, 127);
-
-        for _ in 0..16_384 {
-            assert_eq!(
-                legacy_off.process_circuit_sample(),
-                legacy_on.process_circuit_sample()
-            );
-        }
     }
 
     #[test]

@@ -8,6 +8,7 @@ exact external documents used for a derivation.
 | SRC-SVC-1984 | Reference-hardware service notes dated 1984-07-31 | `1429DB35C0F4CE6DE62AF00FA6BE8A5C56CAEBA3BA1073B55CE62A2CCF1692B5` | PDF 1-4, 8-12; printed 1, 5, 8, 9, 13, 15, 18, 19 | E1 | Architecture, wave generator, module/jack schematics and factory adjustment targets |
 | SRC-SVC-106S-1985 | Related 106S/HS-60 service notes dated 1985-07 | `55118EA03A995EEAD22977E2BA5185B6971A5D7FCB1074E1E202EC706F3585EB` | PDF/printed 5, 6, 17 | E1 for the related revision | Cleaner jack-board topology, semiconductor inventory and explicit source-conflict checks; never silently overrides the target revision |
 | SRC-SVC-60-1983 | Related earlier-family service notes dated 1983-04-10 | `A2376644C6D211D39ADBFE58A381CE37B2FBBECD2723FDFBC02EE107A63F7127` | PDF/printed 11 | E6 for RF-106 | Comparison of the dual-BBD architecture and hypothesis generation only |
+| SRC-OM-106 | Roland JUNO-106 owner's manual and MIDI implementation | `E9315EFE58F26236AD26D1CD6D0359AAB284741186ED31CF0BBADB1D08902EFE` | PDF 28, 34-35 | E1 | APR/IPR message framing, the sixteen tone values and two packed switch bytes |
 | SRC-BBD-CAT | Original BBD manufacturer catalog | `A99DC2CBB7AA735FF2F69A1CC06D863BA6AC25798EADA44B6558748AEE445DEC` | PDF 38-40; printed 36-38 | E2 | 256-stage topology, 10-200 kHz clock range, delay, bandwidth, headroom, THD and noise |
 | SRC-CLK-3101 | Original BBD clock-driver data | `03A4B9134130E4A40567F5159CAB5BA37D601C92F83D1D721B67EAF661E1CCF8` | PDF 1-4; printed 58-61 | E2 | Two-phase clock behavior, divide-by-two relation, supply and oscillator network |
 | SRC-OP-062 | TL062 manufacturer data | `8B4D9405B319A9D38F1C847E8F5B52AF74E83FDAB85295AFF2C529076DE72EF4` | PDF 8-10 | E2 | Output swing, slew rate and operating-condition bounds for the chorus Schmitt/integrator core |
@@ -22,14 +23,14 @@ exact external documents used for a derivation.
 
 ## Source handling
 
-- The imported 128-program table retains the historical native parameter slot
-  25 for state compatibility. That upstream slot represented a synthetic
-  `Sub Sw` control which has no destination on the physical front panel or in
-  the documented patch data. RF-106 therefore preserves the value when loading
-  and saving old states but deliberately excludes it from synthesis. The SUB
-  level DAC is the sole source control, and B35 `Tomita` is the end-to-end
-  regression because its pulse, saw and noise levels are zero while SUB is
-  raised.
+- The imported 128-program table retains the source table's parameter slot 25
+  while the generated table is converted to the documented tone layout. That
+  slot represented a synthetic `Sub Sw` control which has no destination on
+  the physical front panel or in the documented patch data. RF-106 deliberately
+  excludes it from synthesis. The SUB level DAC is the sole sub-oscillator
+  control. B35 `Tomita` is the end-to-end regression for the corrected source
+  order: its pulse, saw, noise and SUB levels are zero, so its audible output
+  comes from the resonant VCF rather than a synthetic sub source.
 - B35 also exposes a lifecycle constraint that is physical rather than a patch
   gain exception: its high-Q VCF is continuously biased while the VCA is
   closed. RF-106 therefore advances idle DCO/VCF state for three measured B_2

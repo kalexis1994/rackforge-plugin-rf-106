@@ -23,7 +23,12 @@ struct Sound {
 
 #[cfg(any(target_arch = "wasm32", test))]
 fn is_rf106_sound(sound: &Sound) -> bool {
-    sound.bank == "factory.rf106" || sound.id.starts_with("factory.rf106.")
+    matches!(
+        sound.bank.as_str(),
+        "factory.rf106" | "imported.rf106" | "user.rf106"
+    ) || sound.id.starts_with("factory.rf106.")
+        || sound.id.starts_with("imported.rf106.")
+        || sound.id.starts_with("custom.user.rf106-")
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -45,6 +50,24 @@ fn patch_prefix_len(name: &str) -> Option<usize> {
 
 #[cfg(any(target_arch = "wasm32", test))]
 fn patch_code(sound: &Sound) -> String {
+    if sound.id.starts_with("custom.") {
+        let number = sound
+            .id
+            .rsplit('-')
+            .next()
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(0);
+        return format!("U{:02}", number % 100);
+    }
+    if sound.id.starts_with("imported.") {
+        let number = sound
+            .id
+            .rsplit('.')
+            .next()
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(0);
+        return format!("I{:02}", (number + 1) % 100);
+    }
     if let Some(length) = patch_prefix_len(&sound.name) {
         return sound.name[..length].to_ascii_uppercase();
     }
@@ -197,6 +220,8 @@ mod browser {
 
     #[derive(Debug, Deserialize)]
     struct HostContext {
+        #[serde(default)]
+        surface: String,
         instance: Instance,
     }
 
@@ -297,6 +322,8 @@ mod browser {
         active_section: String,
         search_query: String,
         bridge_error: String,
+        transfer_notice: String,
+        resource_busy: bool,
     }
 
     impl App {
@@ -328,6 +355,8 @@ mod browser {
                 active_section,
                 search_query: String::new(),
                 bridge_error: String::new(),
+                transfer_notice: String::new(),
+                resource_busy: false,
             })))
         }
 
@@ -349,6 +378,14 @@ mod browser {
 
         fn render(&self) {
             if self.context.is_none() {
+                return;
+            }
+            if self
+                .context
+                .as_ref()
+                .is_some_and(|context| context.surface == "config")
+            {
+                self.root.set_inner_html(&self.render_transfer_config());
                 return;
             }
             let mut html = String::from("<div class=\"synth-chassis\">");
@@ -373,6 +410,41 @@ mod browser {
             let _ = self
                 .window
                 .request_animation_frame(after_layout.unchecked_ref());
+        }
+
+        fn render_transfer_config(&self) -> String {
+            let context = self.context.as_ref().expect("checked before rendering");
+            let imported = context
+                .instance
+                .sounds
+                .iter()
+                .filter(|sound| sound.bank == "imported.rf106")
+                .count();
+            let saved = context
+                .instance
+                .sounds
+                .iter()
+                .filter(|sound| sound.bank == "user.rf106")
+                .count();
+            let disabled = if self.resource_busy { " disabled" } else { "" };
+            let clear = if imported > 0 {
+                format!(
+                    "<button class=\"transfer-button secondary\" type=\"button\" data-action=\"clear-program-bank\"{disabled}>REMOVE BANK</button>"
+                )
+            } else {
+                String::new()
+            };
+            let notice = if self.transfer_notice.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "<p class=\"transfer-notice\">{}</p>",
+                    escape_html(&self.transfer_notice)
+                )
+            };
+            format!(
+                "<main class=\"transfer-config\"><header class=\"transfer-header\"><span>RF</span><strong>106</strong><small>PROGRAM TRANSFER</small></header><section class=\"transfer-card\"><div><span class=\"section-kicker\">ORIGINAL FORMAT</span><h1>JUNO-106 SysEx</h1><p>Install a <code>.syx</code> file containing complete 24-byte APR tone messages. Every valid tone joins the Program library without changing the 128 original factory programs.</p></div><dl><dt>IMPORTED</dt><dd>{imported}</dd><dt>YOUR PROGRAMS</dt><dd>{saved}</dd><dt>TONE DATA</dt><dd>18 × 7-bit</dd></dl><div class=\"transfer-actions\"><button class=\"transfer-button\" type=\"button\" data-action=\"choose-program-bank\"{disabled}>INSTALL SYSEX BANK</button>{clear}</div>{notice}</section><section class=\"transfer-card export-card\"><span class=\"section-kicker\">AUTOMATIC EXPORTS</span><h2>Ready for hardware and librarians</h2><p>Every Program save writes a single manual-buffer dump and rebuilds both banks under RackForge's RF-106 data folder.</p><code>programs/&lt;program&gt;.syx</code><code>exports/rf106-programs.syx</code><code>exports/rf106-factory.syx</code></section></main>"
+            )
         }
 
         fn sync_program_group_routing(&self) {
@@ -742,7 +814,7 @@ mod browser {
                 patches.push_str("<p class=\"empty-state\">No patches match this search.</p>");
             }
             let mut html = format!(
-                "<section class=\"patch-library\"><div class=\"library-toolbar\"><div><span class=\"section-kicker\">{} MEMORY</span><h2>Factory patches</h2><p>Eight banks, eight patches per row. Changes are heard immediately.</p></div><input class=\"patch-search\" type=\"search\" data-action=\"search\" placeholder=\"Search {} patches\" value=\"{}\" aria-label=\"Search patches\"></div><div class=\"patch-grid\">{patches}</div></section>",
+                "<section class=\"patch-library\"><div class=\"library-toolbar\"><div><span class=\"section-kicker\">{} MEMORY</span><h2>Program library</h2><p>Original factory tones, imported SysEx and your saved Programs.</p></div><input class=\"patch-search\" type=\"search\" data-action=\"search\" placeholder=\"Search {} programs\" value=\"{}\" aria-label=\"Search programs\"></div><div class=\"patch-grid\">{patches}</div></section>",
                 MODEL_NAME,
                 MODEL_NAME,
                 escape_html(&self.search_query)
@@ -2018,6 +2090,77 @@ mod browser {
         );
     }
 
+    fn choose_program_bank(app: &AppHandle) {
+        {
+            let mut state = app.borrow_mut();
+            state.resource_busy = true;
+            state.transfer_notice = "Waiting for the SysEx file...".to_owned();
+        }
+        app.borrow().render();
+        request(
+            app,
+            "plugin.select_resource",
+            serde_json::json!({"resource_id": "program-bank", "extensions": ["syx"]}),
+            move |app, result| {
+                let grant = result.ok().and_then(|value| {
+                    Reflect::get(&value, &JsValue::from_str("grant_id"))
+                        .ok()
+                        .and_then(|value| value.as_string())
+                });
+                let Some(grant) = grant else {
+                    let mut state = app.borrow_mut();
+                    state.resource_busy = false;
+                    state.transfer_notice = "No SysEx file was selected.".to_owned();
+                    drop(state);
+                    app.borrow().render();
+                    return;
+                };
+                request(
+                    app,
+                    "plugin.install_resource",
+                    serde_json::json!({"target_resource_id": "program-bank", "grant_id": grant}),
+                    move |app, result| {
+                        let mut state = app.borrow_mut();
+                        state.resource_busy = false;
+                        state.transfer_notice = match result {
+                            Ok(_) => {
+                                "SysEx bank installed. Its tones are now in the Program library."
+                                    .to_owned()
+                            }
+                            Err(error) => error,
+                        };
+                        drop(state);
+                        app.borrow().render();
+                    },
+                );
+            },
+        );
+    }
+
+    fn clear_program_bank(app: &AppHandle) {
+        {
+            let mut state = app.borrow_mut();
+            state.resource_busy = true;
+            state.transfer_notice = "Removing the imported bank...".to_owned();
+        }
+        app.borrow().render();
+        request(
+            app,
+            "plugin.clear_resource",
+            serde_json::json!({"target_resource_id": "program-bank"}),
+            move |app, result| {
+                let mut state = app.borrow_mut();
+                state.resource_busy = false;
+                state.transfer_notice = match result {
+                    Ok(_) => "Imported bank removed.".to_owned(),
+                    Err(error) => error,
+                };
+                drop(state);
+                app.borrow().render();
+            },
+        );
+    }
+
     fn update_parameter_dom(app: &AppHandle, index: u32) {
         let (document, value, label, redraw_envelope, knob_angle) = {
             let app = app.borrow();
@@ -2328,6 +2471,8 @@ mod browser {
                 return;
             };
             match element.get_attribute("data-action").as_deref() {
+                Some("choose-program-bank") => choose_program_bank(&click_app),
+                Some("clear-program-bank") => clear_program_bank(&click_app),
                 Some("section") => {
                     if let Some(section) = element.get_attribute("data-section")
                         && matches!(

@@ -15,3 +15,5 @@ rackforge-plugin-sdk.workspace = true
 rf-106-control.workspace = true
 rf-106-contract.workspace = true
 rf-106-dsp.workspace = true
+serde = { version = "1.0", default-features = false, features = ["alloc", "derive"] }
+serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
