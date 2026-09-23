@@ -61,8 +61,10 @@ distinguish sourced behaviour, bounded inference and unresolved uncertainty.
 
 ## Build and test
 
-A RackForge checkout is expected next to this repository. For local development,
-copy `.cargo/config.toml.example` to `.cargo/config.toml` to use that SDK checkout.
+A RackForge checkout is expected next to this repository. To build against
+that SDK checkout, copy `.cargo/config.toml.example` to `.cargo/config.toml` in the directory
+that holds both checkouts -- not into this repository, whose own
+`.cargo/config.toml` carries the SIMD build flag every checkout needs.
 
 ```bash
 cargo fmt --all -- --check
@@ -75,7 +77,7 @@ bash tools/build-package.sh
 On Windows:
 
 ```powershell
-Copy-Item .cargo/config.toml.example .cargo/config.toml
+Copy-Item .cargo/config.toml.example ../.cargo/config.toml  # once, for every plugin
 cargo +stable-x86_64-pc-windows-msvc install wasm-bindgen-cli --version 0.2.127 --locked
 ./tools/build-package.ps1
 ```
