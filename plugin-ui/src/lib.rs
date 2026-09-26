@@ -13,8 +13,6 @@ const PROTOCOL: &str = "rackforge.plugin.web@1";
 
 #[cfg(any(target_arch = "wasm32", test))]
 const MODEL_ID: &str = "rf106";
-#[cfg(any(target_arch = "wasm32", test))]
-const MODEL_NAME: &str = "RF-106";
 
 #[cfg(any(target_arch = "wasm32", test))]
 const CASSETTE_BAYS: usize = 8;
@@ -48,79 +46,6 @@ struct Sound {
 struct Bank {
     id: String,
     name: String,
-}
-
-#[cfg(any(target_arch = "wasm32", test))]
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct Collection {
-    id: String,
-    name: String,
-    programs: usize,
-}
-
-#[cfg(any(target_arch = "wasm32", test))]
-fn rf106_collections(banks: &[Bank], sounds: &[Sound]) -> Vec<Collection> {
-    let mut ids = Vec::with_capacity(CASSETTE_BAYS + 2);
-    ids.push("factory.rf106".to_owned());
-    for bay in 0..CASSETTE_BAYS {
-        ids.push(cassette_bank_id(bay));
-    }
-    ids.push("user.rf106".to_owned());
-
-    ids.into_iter()
-        .filter_map(|id| {
-            let programs = sounds.iter().filter(|sound| sound.bank == id).count();
-            if programs == 0 {
-                return None;
-            }
-            let name = banks
-                .iter()
-                .find(|bank| bank.id == id)
-                .map(|bank| bank.name.clone())
-                .unwrap_or_else(|| {
-                    if id == "factory.rf106" {
-                        "Original factory".to_owned()
-                    } else if id == "user.rf106" {
-                        "Your programs".to_owned()
-                    } else {
-                        let bay = id.rsplit('.').next().unwrap_or("?");
-                        format!("Cassette {bay}")
-                    }
-                });
-            Some(Collection { id, name, programs })
-        })
-        .collect()
-}
-
-#[cfg(any(target_arch = "wasm32", test))]
-fn shown_collection(
-    requested: Option<&str>,
-    playing_sound_id: &str,
-    collections: &[Collection],
-    sounds: &[Sound],
-) -> Option<String> {
-    let known = |id: &str| collections.iter().any(|collection| collection.id == id);
-    if let Some(id) = requested.filter(|id| known(id)) {
-        return Some(id.to_owned());
-    }
-    if let Some(bank) = sounds
-        .iter()
-        .find(|sound| sound.id == playing_sound_id)
-        .map(|sound| sound.bank.as_str())
-        .filter(|bank| known(bank))
-    {
-        return Some(bank.to_owned());
-    }
-    collections.first().map(|collection| collection.id.clone())
-}
-
-#[cfg(any(target_arch = "wasm32", test))]
-fn is_rf106_sound(sound: &Sound) -> bool {
-    matches!(sound.bank.as_str(), "factory.rf106" | "user.rf106")
-        || sound.bank.starts_with("cassette.rf106.")
-        || sound.id.starts_with("factory.rf106.")
-        || sound.id.starts_with("cassette.rf106.")
-        || sound.id.starts_with("custom.user.rf106-")
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -449,6 +374,10 @@ mod browser {
         window: Window,
         document: Document,
         root: Element,
+        /// RackForge's `<rf-program-select>`, made once and put back in the
+        /// hero after every render: the render replaces the whole page, and
+        /// a new element each time would lose an open list mid-search.
+        program_selector: Element,
         host_origin: String,
         context: Option<HostContext>,
         snapshot: Option<ParameterSnapshot>,
@@ -461,9 +390,7 @@ mod browser {
         render_after_parameter_drag: bool,
         refresh_parameters_after_drag: bool,
         active_section: String,
-        selected_collection_id: Option<String>,
         selected_cassette_bay: Option<usize>,
-        search_query: String,
         bridge_error: String,
         transfer_notice: String,
         resource_busy: bool,
@@ -480,10 +407,19 @@ mod browser {
                 .ok_or_else(|| JsValue::from_str("missing #plugin-root"))?;
             let active_section = "lfo".to_owned();
             let host_origin = window.location().origin()?;
+            let program_selector = document.create_element("rf-program-select")?;
+            for (name, value) in [
+                ("id", "program-selector"),
+                ("label", "Program"),
+                ("placeholder", "Search RF-106 programs"),
+            ] {
+                program_selector.set_attribute(name, value)?;
+            }
             Ok(Rc::new(RefCell::new(Self {
                 window,
                 document,
                 root,
+                program_selector,
                 host_origin,
                 context: None,
                 snapshot: None,
@@ -496,9 +432,7 @@ mod browser {
                 render_after_parameter_drag: false,
                 refresh_parameters_after_drag: false,
                 active_section,
-                selected_collection_id: None,
                 selected_cassette_bay: None,
-                search_query: String::new(),
                 bridge_error: String::new(),
                 transfer_notice: String::new(),
                 resource_busy: false,
@@ -539,8 +473,10 @@ mod browser {
             html.push_str(&self.render_config_body());
             html.push_str(&self.render_program_selector());
             html.push_str("</div>");
-            html.push_str(&self.render_program_library());
             self.root.set_inner_html(&html);
+            if let Some(slot) = self.document.get_element_by_id("program-selector-slot") {
+                let _ = slot.append_child(&self.program_selector);
+            }
             self.sync_program_group_routing();
 
             // Re-measure after the browser has committed the new grid layout.
@@ -957,7 +893,7 @@ mod browser {
 
         fn render_hero(&self) -> String {
             format!(
-                "<header class=\"synth-hero {MODEL_ID}\"><div class=\"hero-topline\"><div class=\"instrument-identity\"><strong class=\"instrument-name\">RF-106</strong><span class=\"instrument-identity-stripe\" aria-hidden=\"true\"></span><span class=\"voice-label\">PROGRAMMABLE POLYPHONIC SYNTHESIZER</span></div></div></header>"
+                "<header class=\"synth-hero {MODEL_ID}\"><div class=\"hero-topline\"><div class=\"instrument-identity\"><span class=\"maker-label\">RACKFORGE INSTRUMENTS</span><strong class=\"instrument-name\">RF-106</strong><span class=\"instrument-identity-stripe\" aria-hidden=\"true\"></span><span class=\"voice-label\">PROGRAMMABLE POLYPHONIC SYNTHESIZER</span></div><div class=\"hero-program\" id=\"program-selector-slot\"></div></div></header>"
             )
         }
 
@@ -983,105 +919,6 @@ mod browser {
                 ));
             }
             html.push_str("</nav>");
-            html
-        }
-
-        fn render_program_library(&self) -> String {
-            let Some(context) = &self.context else {
-                return String::new();
-            };
-            let query = self.search_query.trim().to_ascii_lowercase();
-            let displayed_sound_id = self
-                .pending_sound_id
-                .as_deref()
-                .unwrap_or(&context.instance.selected_sound_id);
-            let collections = rf106_collections(&context.instance.banks, &context.instance.sounds);
-            let shown = shown_collection(
-                self.selected_collection_id.as_deref(),
-                displayed_sound_id,
-                &collections,
-                &context.instance.sounds,
-            );
-            let playing_bank = context
-                .instance
-                .sounds
-                .iter()
-                .find(|sound| sound.id == displayed_sound_id)
-                .map(|sound| sound.bank.as_str());
-            let mut collection_list = String::new();
-            for collection in &collections {
-                let active = shown.as_deref() == Some(collection.id.as_str());
-                let playing = playing_bank == Some(collection.id.as_str());
-                collection_list.push_str(&format!(
-                    "<button class=\"collection-button{}\" type=\"button\" data-action=\"collection\" data-bank-id=\"{}\" aria-pressed=\"{active}\"><span><strong>{}</strong>{}</span><small>{}</small></button>",
-                    if playing { " playing" } else { "" },
-                    escape_html(&collection.id),
-                    escape_html(&collection.name),
-                    if playing {
-                        "<em>PLAYING</em>"
-                    } else {
-                        ""
-                    },
-                    collection.programs,
-                ));
-            }
-            let shown_collection = shown
-                .as_deref()
-                .and_then(|id| collections.iter().find(|collection| collection.id == id));
-            let mut patches = String::new();
-            for sound in context
-                .instance
-                .sounds
-                .iter()
-                .filter(|sound| is_rf106_sound(sound))
-                .filter(|sound| shown.as_deref() == Some(sound.bank.as_str()))
-                .filter(|sound| {
-                    query.is_empty()
-                        || sound.name.to_ascii_lowercase().contains(&query)
-                        || patch_code(sound).to_ascii_lowercase().contains(&query)
-                })
-            {
-                let selected = sound.id == displayed_sound_id;
-                let pending = self.pending_sound_id.as_deref() == Some(sound.id.as_str());
-                let class = match (selected, pending) {
-                    (true, true) => " selected loading",
-                    (true, false) => " selected",
-                    _ => "",
-                };
-                let status = if pending {
-                    "LOADING"
-                } else if selected {
-                    "PLAYING"
-                } else {
-                    MODEL_NAME
-                };
-                patches.push_str(&format!(
-                    "<button class=\"patch-button{class}\" type=\"button\" data-action=\"sound\" data-sound-id=\"{}\" aria-pressed=\"{}\"><span class=\"patch-button-code\">{}</span><strong>{}</strong><small>{}</small></button>",
-                    escape_html(&sound.id), selected, escape_html(&patch_code(sound)),
-                    escape_html(clean_patch_name(sound)), escape_html(status)
-                ));
-            }
-            if patches.is_empty() {
-                patches.push_str(
-                    "<p class=\"empty-state\">No programs match this search in this collection.</p>",
-                );
-            }
-            let collection_name = shown_collection
-                .map(|collection| collection.name.as_str())
-                .unwrap_or("Programs");
-            let collection_count = shown_collection.map_or(0, |collection| collection.programs);
-            let mut html = format!(
-                "<section class=\"patch-library\"><div class=\"library-toolbar\"><div><span class=\"section-kicker\">{} MEMORY</span><h2>Program library</h2><p>Choose a collection, then load one of its programs.</p></div><input class=\"patch-search\" type=\"search\" data-action=\"search\" placeholder=\"Search this collection\" value=\"{}\" aria-label=\"Search programs in selected collection\"></div><div class=\"library-browser\"><aside class=\"collection-sidebar\" aria-label=\"Program collections\"><span class=\"collection-sidebar-title\">COLLECTIONS</span><div class=\"collection-list\">{collection_list}</div></aside><div class=\"collection-programs\"><header class=\"collection-heading\"><div><span class=\"section-kicker\">SELECTED COLLECTION</span><h3>{}</h3></div><strong>{collection_count}<small> PROGRAMS</small></strong></header><div class=\"patch-grid\">{patches}</div></div></div></section>",
-                MODEL_NAME,
-                escape_html(&self.search_query),
-                escape_html(collection_name),
-            );
-            if !self.bridge_error.is_empty() {
-                html.push_str(&format!(
-                    "<p class=\"bridge-error\">{}</p>",
-                    escape_html(&self.bridge_error)
-                ));
-            }
             html
         }
 
@@ -2393,7 +2230,7 @@ mod browser {
                         state.transfer_notice = match result {
                             Ok(_) => {
                                 format!(
-                                    "Cassette {} loaded. Its tones are now in the Program library.",
+                                    "Cassette {} loaded. Its tones are now in the program list.",
                                     bay + 1
                                 )
                             }
@@ -2791,19 +2628,6 @@ mod browser {
                         }
                     }
                 }
-                Some("collection") => {
-                    if let Some(bank_id) = element.get_attribute("data-bank-id") {
-                        let valid = click_app.borrow().context.as_ref().is_some_and(|context| {
-                            rf106_collections(&context.instance.banks, &context.instance.sounds)
-                                .iter()
-                                .any(|collection| collection.id == bank_id)
-                        });
-                        if valid {
-                            click_app.borrow_mut().selected_collection_id = Some(bank_id);
-                            click_app.borrow().render();
-                        }
-                    }
-                }
                 Some("retry-parameters") => {
                     click_app.borrow_mut().bridge_error.clear();
                     click_app.borrow().render();
@@ -2907,36 +2731,14 @@ mod browser {
             let Some(element) = element_from_event(&event) else {
                 return;
             };
-            match element.get_attribute("data-action").as_deref() {
-                Some("search") => {
-                    input_app.borrow_mut().search_query =
-                        Reflect::get(element.as_ref(), &JsValue::from_str("value"))
-                            .ok()
-                            .and_then(|value| value.as_string())
-                            .unwrap_or_default();
-                    input_app.borrow().render();
-                    if let Some(search) = input_app
-                        .borrow()
-                        .document
-                        .query_selector("[data-action=search]")
-                        .ok()
-                        .flatten()
-                    {
-                        let _ = search
-                            .dyn_into::<web_sys::HtmlElement>()
-                            .map(|element| element.focus());
-                    }
+            if element.get_attribute("data-action").as_deref() == Some("parameter") {
+                let index = element
+                    .get_attribute("data-index")
+                    .and_then(|value| value.parse().ok());
+                if let (Some(index), Some(value)) = (index, numeric_value(&element)) {
+                    send_parameter(&input_app, index, value);
+                    update_parameter_dom(&input_app, index);
                 }
-                Some("parameter") => {
-                    let index = element
-                        .get_attribute("data-index")
-                        .and_then(|value| value.parse().ok());
-                    if let (Some(index), Some(value)) = (index, numeric_value(&element)) {
-                        send_parameter(&input_app, index, value);
-                        update_parameter_dom(&input_app, index);
-                    }
-                }
-                _ => {}
             }
         });
         app.borrow()
@@ -3325,72 +3127,32 @@ mod tests {
     #[test]
     fn patch_identity_matches_the_existing_surface_contract() {
         let named = sound("factory.rf106.000", "A11 Brass", "factory.rf106");
-        assert!(is_rf106_sound(&named));
         assert_eq!(MODEL_ID, "rf106");
-        assert_eq!(MODEL_NAME, "RF-106");
+        assert_eq!(named.bank, "factory.rf106");
         assert_eq!(PROTOCOL, "rackforge.plugin.web@1");
         assert_eq!(patch_code(&named), "A11");
         assert_eq!(clean_patch_name(&named), "Brass");
 
         let cassette = sound("cassette.rf106.4.001", "Imported A12", "cassette.rf106.4");
-        assert!(is_rf106_sound(&cassette));
         assert_eq!(CASSETTE_BAYS, 8);
         assert_eq!(CASSETTE_RESOURCES[3], "cassette-4");
         assert_eq!(cassette_bank_id(3), "cassette.rf106.4");
         assert_eq!(patch_code(&cassette), "C02");
 
         let numeric = sound("factory.other.127", "No Prefix", "factory.other");
-        assert!(!is_rf106_sound(&numeric));
         assert_eq!(patch_code(&numeric), "B88");
         assert_eq!(clean_patch_name(&numeric), "No Prefix");
     }
 
+    /// The program is RackForge's selector's to show; the page keeps no
+    /// library of its own, and the hero has the slot the selector goes in.
     #[test]
-    fn collections_keep_factory_first_and_show_only_the_selected_bank() {
-        let banks = vec![
-            Bank {
-                id: "cassette.rf106.3".to_owned(),
-                name: "Best of Orion".to_owned(),
-            },
-            Bank {
-                id: "factory.rf106".to_owned(),
-                name: "Original factory".to_owned(),
-            },
-            Bank {
-                id: "user.rf106".to_owned(),
-                name: "Your programs".to_owned(),
-            },
-        ];
-        let sounds = vec![
-            sound("cassette.rf106.3.000", "Bass", "cassette.rf106.3"),
-            sound("factory.rf106.000", "Brass", "factory.rf106"),
-            sound("factory.rf106.001", "Strings", "factory.rf106"),
-            sound("custom.user.rf106-001", "Mine", "user.rf106"),
-        ];
-        let collections = rf106_collections(&banks, &sounds);
-        assert_eq!(
-            collections
-                .iter()
-                .map(|collection| collection.id.as_str())
-                .collect::<Vec<_>>(),
-            ["factory.rf106", "cassette.rf106.3", "user.rf106"]
-        );
-        assert_eq!(collections[0].programs, 2);
-        assert_eq!(collections[1].name, "Best of Orion");
-        assert_eq!(
-            shown_collection(None, "cassette.rf106.3.000", &collections, &sounds).as_deref(),
-            Some("cassette.rf106.3")
-        );
-        assert_eq!(
-            shown_collection(
-                Some("factory.rf106"),
-                "cassette.rf106.3.000",
-                &collections,
-                &sounds,
-            )
-            .as_deref(),
-            Some("factory.rf106")
-        );
+    fn the_hero_carries_the_rackforge_program_selector() {
+        let source = include_str!("lib.rs");
+        assert!(source.contains("create_element(\"rf-program-select\")"));
+        assert!(source.contains("id=\\\"program-selector-slot\\\""));
+        assert!(source.contains(">RACKFORGE INSTRUMENTS<"));
+        assert!(!source.contains(&["data-action=\\\"", "search"].concat()));
     }
 
     #[test]
