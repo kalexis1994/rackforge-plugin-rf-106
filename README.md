@@ -1,103 +1,28 @@
-# RackForge RF-106
+# RF-106
 
-RF-106 is a portable six-voice polyphonic synthesizer for RackForge. Its audio
-engine, control model, host adapter and interactive panel are implemented in
-Rust and ship as a WebAssembly component with a Rust/WebAssembly web interface.
+![RF-106 instrument](plugin/package/branding/banner.png)
 
-RF-106 is a subtractive synthesizer rather than a PCM or sample-ROM player. Each
-voice generates pulse, saw, sub-oscillator and noise signals, then shapes them
-through high-pass and resonant low-pass filters, an envelope-controlled
-amplifier and a stereo chorus. The implementation is circuit-informed and is
-validated with deterministic DSP tests and repeatable offline experiments.
+RF-106 is a six-voice subtractive synth for RackForge. Its pulse, saw, sub oscillator and noise give you the raw sound, a resonant low-pass filter shapes it, and a stereo chorus can spread it across the speakers.
 
-## Features
+## Install
 
-- Six-voice polyphony with two allocation modes, key transpose and portamento.
-- Six persistent RackForge render units, one per physical voice, scheduled in
-  parallel before the deterministic analog sum and stereo chorus stages.
-- Pulse and saw oscillators, sub-oscillator, noise, PWM and LFO modulation.
-- Four-position high-pass filter and a resonant, envelope-modulated low-pass
-  filter with keyboard tracking.
-- ADSR envelope, envelope/gate amplifier modes and output-stage modelling.
-- Two stereo chorus modes with clock, delay-line and compander behaviour.
-- Performance bender with pitch bend and LFO trigger gestures.
-- 128 factory programs exposed through the panel and RackForge preset browser.
-- Eight cassette-shaped banks for original 18-byte JUNO-106 tone Programs,
-  with independent `.106`/`.syx` import and hardware-compatible SysEx export.
-- Mouse, touch and keyboard interaction, plus host-owned MIDI parameter linking.
+RF-106 is included in the RackForge Standard bundle. To install it separately, download `RF-106.rfplugin` and choose **Install plugin** in RackForge's **Plugin Manager**. [Download RF-106](https://github.com/kalexis1994/rackforge-plugin-rf-106/releases/latest)
 
-## Repository layout
+## Play and shape a sound
 
-```text
-crates/rf-106-contract/  Public parameters, factory programs and state contract
-crates/rf-106-control/   MIDI, keyboard modes and voice assignment
-crates/rf-106-voice/     Oscillator, filter, amplifier and envelope voice model
-crates/rf-106-chorus/    Stereo chorus model
-crates/rf-106-output/    Output-stage model
-crates/rf-106-dsp/       Six-voice synthesis engine
-plugin/                  RackForge processor and package resources
-plugin-ui/               Rust/WebAssembly control surface
-tools/rf-106-metadata/   Deterministic metadata generator
-```
+Open **RF-106** in PLAY and use the program selector to browse the 128 factory sounds. **A11 Brass** is a starting point for learning the panel. Play a held chord and sweep the **VCF** frequency to hear how much of the oscillator's brightness passes through.
 
-The plugin exposes 128 factory programs and the complete synthesis panel: LFO,
-DCO, HPF, VCF, VCA, envelope, chorus, performance controls, MIDI channel and
-output controls. Desktop, touch and compact RackForge surfaces operate on the
-same public parameter contract.
+| Section | What to try |
+| --- | --- |
+| **DCO** | Switch on **Pulse** or **Saw**. Raise **Sub** to add an octave below and use **Noise** for breath or texture. In LFO mode, **PWM** adds movement to the pulse wave. |
+| **HPF** and **VCF** | Use the high-pass filter to thin the low end. Lower the VCF frequency for a darker sound and raise resonance to emphasize the cutoff. |
+| **ENV** and **VCA** | Set the shape with attack, decay, sustain and release. Switch between the envelope and gate modes to hear the difference when you let go of the keys. |
+| **Chorus** | Compare off, **I** and **II** on a sustained chord. |
 
-Program transfer preserves the original Roland tone bytes inside versioned
-RackForge Program documents. CONFIG can install complete APR dumps as a bank;
-every saved Program also produces hardware-shaped single-tone and bank `.syx`
-artifacts. See [`docs/PROGRAM_TRANSFER.md`](docs/PROGRAM_TRANSFER.md).
+## Bring your own programs
 
-## Fidelity work
-
-The audio path is kept separate from the visual panel so circuit hypotheses can
-be measured and replaced without changing the public parameter contract. The
-current evidence, open questions and acceptance thresholds are recorded in
-[`docs/CIRCUIT_FIDELITY_PLAN.md`](docs/CIRCUIT_FIDELITY_PLAN.md) and the
-[`docs/circuit-fidelity/`](docs/circuit-fidelity/) laboratory notes. These notes
-distinguish sourced behaviour, bounded inference and unresolved uncertainty.
-
-## Build and test
-
-A RackForge checkout is expected next to this repository. For local development,
-copy `.cargo/config.toml.example` to `.cargo/config.toml` to use that SDK checkout.
-
-```bash
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --release --workspace
-cargo install wasm-bindgen-cli --version 0.2.127 --locked
-bash tools/build-package.sh
-```
-
-On Windows:
-
-```powershell
-Copy-Item .cargo/config.toml.example .cargo/config.toml
-cargo +stable-x86_64-pc-windows-msvc install wasm-bindgen-cli --version 0.2.127 --locked
-./tools/build-package.ps1
-```
-
-The package is written to `artifacts/rf-106-0.2.21.rfplugin`. It contains the
-audio component, versioned metadata and the plugin-owned web interface; it does
-not contain a platform-specific executable.
-
-GitHub Actions also builds the portable package after the x86-64 and ARM test
-jobs pass. Every workflow run publishes `RF-106.rfplugin` together with its
-SHA-256 checksum as a downloadable artifact retained for 30 days.
-
-The RackForge icon, banner and splash use original artwork based on the plugin
-UI's palette, split fader markers and shared graduations. Only the final package
-assets are stored in the repository. Validate their dimensions, encoding and
-file-size limits with Pillow:
-
-```bash
-python tools/generate-branding.py
-```
+Open **CONFIG** and use **LOAD** in a cassette bay to install a Juno-106 Librarian `.106` bank or compatible JUNO-106 `.syx` tone dump. Each populated bay appears as a bank in the program selector. Save an edited sound as a copy in **Your programs** to keep it alongside the factory and imported banks. [Program transfer guide](docs/PROGRAM_TRANSFER.md)
 
 ## License
 
-RF-106 is distributed under GPL-3.0-only. See [LICENSE](LICENSE) and
-[NOTICE.md](NOTICE.md).
+RF-106 is distributed under GPL-3.0-only. [License](LICENSE) · [Notices](NOTICE.md)
