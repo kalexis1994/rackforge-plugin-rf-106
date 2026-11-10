@@ -2,7 +2,7 @@
 
 ![RF-106 instrument](plugin/package/branding/banner.png)
 
-RF-106 is a six-voice subtractive synth for RackForge. Its pulse, saw, sub oscillator and noise give you the raw sound, a resonant low-pass filter shapes it, and a stereo chorus can spread it across the speakers.
+RF-106 is a six-voice subtractive synth for RackForge inspired by the Roland JUNO-106. Its pulse, saw, sub oscillator and noise give you the raw sound, a resonant low-pass filter shapes it, and a stereo chorus can spread it across the speakers.
 
 ## Install
 
