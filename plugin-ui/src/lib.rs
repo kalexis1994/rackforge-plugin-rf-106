@@ -1140,11 +1140,7 @@ mod browser {
                         .filter(|parameter| match visual_section_id {
                             "performance" => !matches!(
                                 parameter.id.as_str(),
-                                "key-transpose"
-                                    | "allocation-mode"
-                                    | "midi-channel"
-                                    | "midi-function"
-                                    | "tuning"
+                                "key-transpose" | "allocation-mode" | "midi-channel"
                             ),
                             "level" => parameter.id != "physical-volume",
                             _ => true,
@@ -1728,13 +1724,13 @@ mod browser {
                 self.parameter_value(trigger.index, trigger.kind.default_value()) >= 0.5;
             let left = (position_value + 1.0) * 50.0;
             format!(
-                "<div class=\"bender-hardware\"><div class=\"bender-panel-labels\"><strong>BENDER</strong><span>LEFT</span><span>LFO TRIG</span><span>RIGHT</span></div><div class=\"bender-motion-field\" data-action=\"bender\" data-index=\"{}\" data-trigger-index=\"{}\" data-rackforge-parameter-index=\"{}\" role=\"slider\" tabindex=\"0\" aria-label=\"Bender: left and right bend pitch, push upward triggers LFO\" aria-valuemin=\"-1\" aria-valuemax=\"1\" aria-valuenow=\"{position_value}\" style=\"--bender-left: {left:.3}%; --bender-push: {}px\"><svg class=\"bender-gate\" viewBox=\"0 0 300 82\" preserveAspectRatio=\"none\" aria-hidden=\"true\"><defs><linearGradient id=\"bender-gate-depth\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#020203\"/><stop offset=\"0.48\" stop-color=\"#15161a\"/><stop offset=\"1\" stop-color=\"#030304\"/></linearGradient></defs><path d=\"M20 12H280V70H20Z\" fill=\"url(#bender-gate-depth)\"/><path d=\"M20 41H280 M150 12V70\"/></svg><span class=\"bender-lever{}\" aria-hidden=\"true\"><span class=\"bender-lever-stem\"></span><span class=\"bender-lever-cap\"></span></span></div><output class=\"visually-hidden\" data-output-index=\"{}\">{position_value:.3}</output></div>",
+                "<div class=\"bender-hardware\"><div class=\"bender-panel-labels\"><strong>BENDER</strong><span>LEFT</span><span data-rackforge-parameter-index=\"{trigger_index}\">LFO TRIG</span><span>RIGHT</span></div><div class=\"bender-motion-field\" data-action=\"bender\" data-index=\"{}\" data-trigger-index=\"{trigger_index}\" data-rackforge-parameter-index=\"{}\" role=\"slider\" tabindex=\"0\" aria-label=\"Bender: left and right bend pitch, push upward triggers LFO\" aria-valuemin=\"-1\" aria-valuemax=\"1\" aria-valuenow=\"{position_value}\" style=\"--bender-left: {left:.3}%; --bender-push: {}px\"><svg class=\"bender-gate\" viewBox=\"0 0 300 82\" preserveAspectRatio=\"none\" aria-hidden=\"true\"><defs><linearGradient id=\"bender-gate-depth\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#020203\"/><stop offset=\"0.48\" stop-color=\"#15161a\"/><stop offset=\"1\" stop-color=\"#030304\"/></linearGradient></defs><path d=\"M20 12H280V70H20Z\" fill=\"url(#bender-gate-depth)\"/><path d=\"M20 41H280 M150 12V70\"/></svg><span class=\"bender-lever{}\" aria-hidden=\"true\"><span class=\"bender-lever-stem\"></span><span class=\"bender-lever-cap\"></span></span></div><output class=\"visually-hidden\" data-output-index=\"{}\">{position_value:.3}</output></div>",
                 position.index,
-                trigger.index,
                 position.index,
                 if trigger_active { -18 } else { 0 },
                 if trigger_active { " lfo-active" } else { "" },
                 position.index,
+                trigger_index = trigger.index,
             )
         }
 

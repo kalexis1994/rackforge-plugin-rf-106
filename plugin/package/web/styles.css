@@ -3083,6 +3083,11 @@ input.parameter-slider {
   grid-column: 3;
 }
 
+.page-performance .control-tuning {
+  grid-row: 4;
+  grid-column: 1;
+}
+
 .page-performance .shared-performance-bender {
   width: 300px;
   grid-row: 2;
@@ -3340,8 +3345,8 @@ input.parameter-slider {
 }
 
 .page-performance .control-midi-function {
-  grid-row: 3;
-  grid-column: span 2;
+  grid-row: 4;
+  grid-column: 2 / -1;
 }
 
 .bender-hardware {
